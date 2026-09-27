@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { clearSessionToken, readSessionToken } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 
 const initialData = { overview: null, buses: [], routes: [], drivers: [], shifts: [], adminBookings: [], reportItems: [], stopsByRoute: {}, alertsByRoute: {} };
-const endpoints = [
-  ["overview", "/admin/overview"], ["buses", "/buses"], ["routes", "/routes"], ["drivers", "/admin/drivers"],
-  ["shifts", "/admin/shifts"], ["adminBookings", "/admin/bookings"], ["reportItems", "/reports"],
-];
+const endpointsByTab = {
+  overview: [["overview", "/admin/overview"]],
+  drivers: [["drivers", "/admin/drivers"], ["shifts", "/admin/shifts"], ["buses", "/buses"]],
+  routes: [["routes", "/routes"], ["buses", "/buses"]],
+  bookings: [["adminBookings", "/admin/bookings"]],
+  buses: [["buses", "/buses"], ["routes", "/routes"], ["drivers", "/admin/drivers"]],
+  reports: [["reportItems", "/reports"]],
+};
 
 function idOf(value) { return typeof value === "object" && value ? value._id : value; }
 function dateLabel(value) { return value ? new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(value)) : "—"; }
@@ -53,6 +57,10 @@ export default function AdminHomePage() {
   const [alertForm, setAlertForm] = useState({ route: "", message: "", expiresAt: "" });
   const [bookingFilter, setBookingFilter] = useState("all");
   const [activeTab, setActiveTab] = useState("overview");
+  const [loadingTab, setLoadingTab] = useState("");
+  const [routeDetailsLoading, setRouteDetailsLoading] = useState(false);
+  const profileVerifiedRef = useRef(false);
+  const loadedTabsRef = useRef(new Set());
 
   useEffect(() => {
     const syncTab = () => setActiveTab((window.location.hash || "#overview").slice(1));
@@ -61,54 +69,49 @@ export default function AdminHomePage() {
     return () => window.removeEventListener("hashchange", syncTab);
   }, []);
 
-  const loadData = useCallback(async (sessionToken, isActive = () => true) => {
-    const profile = await apiRequest("/auth/profile", { token: sessionToken });
-    if (!isActive()) return;
-    if (profile.role !== "admin") {
-      clearSessionToken(); setToken(null); setAdmin(null); setSessionState("denied"); return;
+  const loadData = useCallback(async (sessionToken, isActive = () => true, tab = "overview") => {
+    setLoadingTab(tab);
+    if (!profileVerifiedRef.current) {
+      const profile = await apiRequest("/auth/profile", { token: sessionToken });
+      if (!isActive()) return;
+      if (profile.role !== "admin") {
+        clearSessionToken(); setToken(null); setAdmin(null); setSessionState("denied"); setLoadingTab(""); return;
+      }
+      setAdmin(profile);
+      profileVerifiedRef.current = true;
     }
-    setAdmin(profile);
-    const results = await Promise.all(endpoints.map(async ([key, path]) => {
+    const results = await Promise.all((endpointsByTab[tab] || endpointsByTab.overview).map(async ([key, path]) => {
       try { return { key, value: await apiRequest(path, { token: sessionToken }) }; }
       catch (error) { return { key, error }; }
     }));
     if (!isActive()) return;
-    const next = { ...initialData, stopsByRoute: {}, alertsByRoute: {} };
+    const values = {};
     const errors = [];
     let sessionExpired = false;
     results.forEach(({ key, value, error }) => {
       if (error) { errors.push({ key, message: error.message }); if (error.status === 401) sessionExpired = true; return; }
-      next[key] = value;
+      values[key] = value;
     });
-    if (Array.isArray(next.routes)) {
-      const [routeStops, routeAlerts] = await Promise.all([
-        Promise.all(next.routes.map(async (route) => {
-          try { return { routeId: route._id, stops: await apiRequest(`/stops/route/${encodeURIComponent(route._id)}`, { token: sessionToken }) }; }
-          catch (error) { errors.push({ key: `stops: ${route.routeName}`, message: error.message }); return { routeId: route._id, stops: [] }; }
-        })),
-        Promise.all(next.routes.map(async (route) => {
-          try { return { routeId: route._id, alerts: await apiRequest(`/route-alerts/route/${encodeURIComponent(route._id)}`, { token: sessionToken }) }; }
-          catch (error) { errors.push({ key: `alerts: ${route.routeName}`, message: error.message }); return { routeId: route._id, alerts: [] }; }
-        })),
-      ]);
-      routeStops.forEach(({ routeId, stops }) => { next.stopsByRoute[routeId] = Array.isArray(stops) ? stops : []; });
-      routeAlerts.forEach(({ routeId, alerts }) => { next.alertsByRoute[routeId] = Array.isArray(alerts) ? alerts : []; });
-    }
     if (sessionExpired) {
-      clearSessionToken(); setToken(null); setAdmin(null); setSessionState("expired"); return;
+      clearSessionToken(); setToken(null); setAdmin(null); setSessionState("expired"); setLoadingTab(""); return;
     }
-    setData(next);
+    setData((current) => ({ ...current, ...values }));
     setDataErrors(errors);
+    loadedTabsRef.current.add(tab);
+    setLoadingTab("");
     setSessionState("ready");
   }, []);
-
   useEffect(() => {
     let active = true;
     const sessionToken = readSessionToken();
     setToken(sessionToken);
     if (!sessionToken) { setSessionState("signed-out"); return () => { active = false; }; }
     setSessionState("loading");
-    loadData(sessionToken, () => active).catch((error) => {
+    loadedTabsRef.current.clear();
+    profileVerifiedRef.current = false;
+    setData((current) => ({ ...current, stopsByRoute: {}, alertsByRoute: {} }));
+    const firstTab = (window.location.hash || "#overview").slice(1);
+    loadData(sessionToken, () => active, firstTab).catch((error) => {
       if (!active) return;
       if (error.status === 401) { clearSessionToken(); setToken(null); setSessionState("expired"); }
       else { setSessionState("error"); setNotice({ type: "error", text: error.message || "Could not load the administrator profile." }); }
@@ -116,6 +119,45 @@ export default function AdminHomePage() {
     return () => { active = false; };
   }, [loadData, refreshKey]);
 
+  useEffect(() => {
+    if (sessionState !== "ready" || !token || loadedTabsRef.current.has(activeTab)) return undefined;
+    let active = true;
+    loadData(token, () => active, activeTab).catch((error) => {
+      if (!active) return;
+      setLoadingTab("");
+      if (error.status === 401) { clearSessionToken(); setToken(null); setAdmin(null); setSessionState("expired"); }
+      else setNotice({ type: "error", text: error.message || `Could not load ${activeTab} data.` });
+    });
+    return () => { active = false; };
+  }, [activeTab, sessionState, token, loadData]);
+  useEffect(() => {
+    if (sessionState !== "ready" || activeTab !== "routes" || !token || data.routes.length === 0) return undefined;
+    let active = true;
+    const routeList = data.routes;
+    if (routeList.every((route) => Object.prototype.hasOwnProperty.call(data.stopsByRoute, route._id) && Object.prototype.hasOwnProperty.call(data.alertsByRoute, route._id))) return undefined;
+    setRouteDetailsLoading(true);
+    async function loadRouteDetails() {
+      const [stopResults, alertResults] = await Promise.all([
+        Promise.all(routeList.map(async (route) => {
+          try { return { routeId: route._id, value: await apiRequest(`/stops/route/${encodeURIComponent(route._id)}`, { token }) }; }
+          catch (error) { return { routeId: route._id, value: [], error }; }
+        })),
+        Promise.all(routeList.map(async (route) => {
+          try { return { routeId: route._id, value: await apiRequest(`/route-alerts/route/${encodeURIComponent(route._id)}`, { token }) }; }
+          catch (error) { return { routeId: route._id, value: [], error }; }
+        })),
+      ]);
+      if (!active) return;
+      const stopsByRoute = Object.fromEntries(stopResults.map(({ routeId, value }) => [routeId, Array.isArray(value) ? value : []]));
+      const alertsByRoute = Object.fromEntries(alertResults.map(({ routeId, value }) => [routeId, Array.isArray(value) ? value : []]));
+      setData((current) => ({ ...current, stopsByRoute, alertsByRoute }));
+      setRouteDetailsLoading(false);
+      const detailErrors = [...stopResults, ...alertResults].filter((item) => item.error).map((item) => ({ key: `route details: ${item.routeId}`, message: item.error.message }));
+      setDataErrors((current) => [...current.filter((item) => !item.key.startsWith("route details:")), ...detailErrors]);
+    }
+    loadRouteDetails();
+    return () => { active = false; };
+  }, [activeTab, sessionState, token, data.routes, data.stopsByRoute, data.alertsByRoute]);
   async function mutate(action, successText) {
     if (!token || busy) return false;
     setBusy(true); setNotice(null);
@@ -235,7 +277,9 @@ export default function AdminHomePage() {
       </section>
 
       {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`rounded-2xl border px-4 py-3 text-sm ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
-      {dataErrors.length > 0 && <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Some dashboard sections could not load: {dataErrors.map((error) => error.key).join(", ")}. Use Refresh data to try again.</div>}
+      {loadingTab === activeTab && <div role="status" className="rounded-2xl border border-[#dce2f1] bg-white px-4 py-3 text-sm text-[#68738e]">Loading {activeTab} data…</div>}
+{activeTab === "routes" && routeDetailsLoading && <div role="status" className="rounded-2xl border border-[#dce2f1] bg-white px-4 py-3 text-sm text-[#68738e]">Loading route stops and alerts…</div>}
+            {dataErrors.length > 0 && <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Some dashboard sections could not load: {dataErrors.map((error) => error.key).join(", ")}. Use Refresh data to try again.</div>}
 
       <section id="summary" aria-label="Fleet summary" hidden={activeTab !== "overview"} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Active buses" value={data.overview?.buses?.active ?? 0} note="on service" color="green" />
@@ -261,10 +305,10 @@ export default function AdminHomePage() {
 
       <section id="admin-setup" hidden={activeTab !== "buses" && activeTab !== "routes"} className="grid items-start gap-5 xl:grid-cols-2">
         <div id="bus-form-panel" hidden={activeTab !== "buses"} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><SectionTitle eyebrow="Fleet setup" title="Add a vehicle"/><form onSubmit={createBus} className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="Bus number" required value={busForm.busNumber} onChange={(event) => setBusForm({ ...busForm, busNumber: event.target.value })} placeholder="SS-101"/><Field label="Seat capacity" required type="number" min="1" value={busForm.capacity} onChange={(event) => setBusForm({ ...busForm, capacity: event.target.value })} placeholder="40"/><SelectField label="Route" required value={busForm.route} onChange={(event) => setBusForm({ ...busForm, route: event.target.value })}><option value="">Choose route</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><SelectField label="Driver (optional)" value={busForm.driver} onChange={(event) => setBusForm({ ...busForm, driver: event.target.value })}><option value="">Leave unassigned</option>{data.drivers.filter((driver) => !driver.assignedBus).map((driver) => <option key={driver._id} value={driver._id}>{driver.name}</option>)}</SelectField><button disabled={busy || data.routes.length === 0} className="min-h-10 rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50 sm:col-span-2">{busy ? "Saving…" : "Add bus to fleet"}</button></form>{data.routes.length === 0 && <p className="mt-3 text-xs text-amber-700">Create a route before adding a bus.</p>}</div>
-        <div id="routes-panel" hidden={activeTab !== "routes"} className="scroll-mt-8 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><SectionTitle eyebrow="Network setup" title="Routes and stops"/><form onSubmit={createRoute} className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="Route name" required value={routeForm.routeName} onChange={(event) => setRouteForm({ ...routeForm, routeName: event.target.value })} placeholder="Clock Tower – D Ground"/><Field label="Start point" required value={routeForm.startPoint} onChange={(event) => setRouteForm({ ...routeForm, startPoint: event.target.value })} placeholder="Ghanta Ghar"/><Field label="End point" required value={routeForm.endPoint} onChange={(event) => setRouteForm({ ...routeForm, endPoint: event.target.value })} placeholder="D Ground"/><Field label="Description (optional)" value={routeForm.description} onChange={(event) => setRouteForm({ ...routeForm, description: event.target.value })} placeholder="Short route description"/><button disabled={busy} className="min-h-10 rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50 sm:col-span-2">{busy ? "Saving…" : "Create route"}</button></form>
+        <div id="routes-panel" hidden={activeTab !== "routes"} className="scroll-mt-8 grid gap-4 lg:grid-cols-2"><div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-[#f7f8ff] p-5 shadow-sm sm:p-6"><SectionTitle eyebrow="Network setup" title="Create a route"/><form onSubmit={createRoute} className="mt-5 grid gap-3 sm:grid-cols-2"><Field label="Route name" required value={routeForm.routeName} onChange={(event) => setRouteForm({ ...routeForm, routeName: event.target.value })} placeholder="Clock Tower – D Ground"/><Field label="Start point" required value={routeForm.startPoint} onChange={(event) => setRouteForm({ ...routeForm, startPoint: event.target.value })} placeholder="Ghanta Ghar"/><Field label="End point" required value={routeForm.endPoint} onChange={(event) => setRouteForm({ ...routeForm, endPoint: event.target.value })} placeholder="D Ground"/><Field label="Description (optional)" value={routeForm.description} onChange={(event) => setRouteForm({ ...routeForm, description: event.target.value })} placeholder="Short route description"/><button disabled={busy} className="min-h-10 rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50 sm:col-span-2">{busy ? "Saving…" : "Create route"}</button></form></div>
           <form onSubmit={saveRouteEdits} className="mt-5 rounded-2xl border border-[#e4e9f7] bg-[#f8f9ff] p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-[#536bb7]">Edit or remove a route</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><SelectField label="Select route" value={routeEditId} onChange={(event) => { const selected = data.routes.find((route) => String(route._id) === event.target.value); setRouteEditId(event.target.value); setRouteEditForm(selected ? { routeName: selected.routeName || "", startPoint: selected.startPoint || "", endPoint: selected.endPoint || "", description: selected.description || "" } : { routeName: "", startPoint: "", endPoint: "", description: "" }); }}><option value="">Choose route to edit</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><Field label="Route name" required disabled={!routeEditId} value={routeEditForm.routeName} onChange={(event) => setRouteEditForm({ ...routeEditForm, routeName: event.target.value })}/><Field label="Start point" required disabled={!routeEditId} value={routeEditForm.startPoint} onChange={(event) => setRouteEditForm({ ...routeEditForm, startPoint: event.target.value })}/><Field label="End point" required disabled={!routeEditId} value={routeEditForm.endPoint} onChange={(event) => setRouteEditForm({ ...routeEditForm, endPoint: event.target.value })}/><Field label="Description" disabled={!routeEditId} value={routeEditForm.description} onChange={(event) => setRouteEditForm({ ...routeEditForm, description: event.target.value })}/><div className="flex items-end gap-2"><button type="submit" disabled={busy || !routeEditId} className="min-h-10 flex-1 rounded-xl bg-[#536bb7] px-3 text-xs font-semibold text-white disabled:opacity-50">Save changes</button><button type="button" disabled={busy || !routeEditId} onClick={() => { const route = data.routes.find((item) => String(item._id) === routeEditId); if (route) deactivateRoute(route); }} className="min-h-10 rounded-xl border border-rose-200 px-3 text-xs font-semibold text-rose-700 disabled:opacity-50">Remove</button></div></div></form>
-          <form onSubmit={createStop} className="mt-6 border-t border-slate-100 pt-5"><p className="text-[10px] font-bold uppercase tracking-wide text-[#8992a8]">Add ordered route stop</p><div className="mt-3 grid gap-3 sm:grid-cols-2"><SelectField label="Route" required value={stopForm.route} onChange={(event) => { const routeId = event.target.value; const nextOrder = Math.max(0, ...(data.stopsByRoute[routeId] || []).map((stop) => Number(stop.stopOrder) || 0)) + 1; setStopForm({ ...stopForm, route: routeId, stopOrder: routeId ? String(nextOrder) : "" }); }}><option value="">Choose route</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><Field label="Stop name" required value={stopForm.stopName} onChange={(event) => setStopForm({ ...stopForm, stopName: event.target.value })} placeholder="Railway Station"/><Field label="Latitude" required type="number" step="any" min="-90" max="90" value={stopForm.latitude} onChange={(event) => setStopForm({ ...stopForm, latitude: event.target.value })} placeholder="31.4218"/><Field label="Longitude" required type="number" step="any" min="-180" max="180" value={stopForm.longitude} onChange={(event) => setStopForm({ ...stopForm, longitude: event.target.value })} placeholder="73.0802"/><Field label="Stop order" required type="number" min="1" step="1" value={stopForm.stopOrder} onChange={(event) => setStopForm({ ...stopForm, stopOrder: event.target.value })} placeholder="1"/><button disabled={busy || data.routes.length === 0} className="min-h-10 self-end rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50">{busy ? "Saving…" : "Add stop"}</button></div></form>
-          <div className="mt-5 border-t border-slate-100 pt-4"><p className="text-[10px] font-bold uppercase tracking-wide text-[#8992a8]">Current route stops · edit or remove</p><div className="mt-3 space-y-3">{data.routes.map((route) => <div key={route._id} className="rounded-xl bg-[#f6f7fb] p-3.5"><p className="text-xs font-semibold text-[#465573]">{route.routeName} <span className="font-normal text-[#8992a8]">· {(data.stopsByRoute[route._id] || []).length} stops</span></p><div className="mt-3 space-y-2">{(data.stopsByRoute[route._id] || []).map((stop) => <form key={stop._id} onSubmit={async (event) => { event.preventDefault(); const values = new FormData(event.currentTarget); const payload = { stopName: values.get("stopName"), latitude: Number(values.get("latitude")), longitude: Number(values.get("longitude")), stopOrder: Number(values.get("stopOrder")) }; await mutate(() => apiRequest(`/stops/${encodeURIComponent(stop._id)}`, { method: "PUT", token, body: JSON.stringify(payload) }), `${stop.stopName} updated.`); }} className="grid gap-2 rounded-xl border border-white bg-white p-3 sm:grid-cols-[1.3fr_1fr_1fr_.6fr_auto_auto] sm:items-end"><Field label="Stop name" name="stopName" required defaultValue={stop.stopName}/><Field label="Latitude" name="latitude" required type="number" step="any" defaultValue={stop.latitude}/><Field label="Longitude" name="longitude" required type="number" step="any" defaultValue={stop.longitude}/><Field label="Order" name="stopOrder" required type="number" min="1" defaultValue={stop.stopOrder}/><button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#536bb7] px-3 text-[10px] font-semibold text-white">Save</button><button type="button" disabled={busy} onClick={async () => { if (!window.confirm(`Remove stop ${stop.stopName}?`)) return; await mutate(() => apiRequest(`/stops/${encodeURIComponent(stop._id)}`, { method: "DELETE", token }), `Stop ${stop.stopName} removed.`); }} className="min-h-10 rounded-lg border border-rose-200 px-3 text-[10px] font-semibold text-rose-700">Remove</button></form>)}{(data.stopsByRoute[route._id] || []).length === 0 && <p className="text-[10px] text-[#8992a8]">No stops. Add the first stop above.</p>}</div></div>)}</div></div>
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-[#f1f8ff] p-5 shadow-sm sm:p-6"><SectionTitle eyebrow="Stop management" title="Add a route stop"/><form onSubmit={createStop} className="mt-4"><div className="grid gap-3 sm:grid-cols-2"><SelectField label="Route" required value={stopForm.route} onChange={(event) => { const routeId = event.target.value; const nextOrder = Math.max(0, ...(data.stopsByRoute[routeId] || []).map((stop) => Number(stop.stopOrder) || 0)) + 1; setStopForm({ ...stopForm, route: routeId, stopOrder: routeId ? String(nextOrder) : "" }); }}><option value="">Choose route</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><Field label="Stop name" required value={stopForm.stopName} onChange={(event) => setStopForm({ ...stopForm, stopName: event.target.value })} placeholder="Railway Station"/><Field label="Latitude" required type="number" step="any" min="-90" max="90" value={stopForm.latitude} onChange={(event) => setStopForm({ ...stopForm, latitude: event.target.value })} placeholder="31.4218"/><Field label="Longitude" required type="number" step="any" min="-180" max="180" value={stopForm.longitude} onChange={(event) => setStopForm({ ...stopForm, longitude: event.target.value })} placeholder="73.0802"/><Field label="Stop order" required type="number" min="1" step="1" value={stopForm.stopOrder} onChange={(event) => setStopForm({ ...stopForm, stopOrder: event.target.value })} placeholder="1"/><button disabled={busy || data.routes.length === 0} className="min-h-10 self-end rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50">{busy ? "Saving…" : "Add stop"}</button></div></form></div>
+          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-[#f8f7ff] p-5 shadow-sm sm:p-6"><SectionTitle eyebrow="Stop management" title="Review and edit stops"/><div className="mt-4 space-y-3">{data.routes.map((route) => <div key={route._id} className="rounded-xl bg-[#f6f7fb] p-3.5"><p className="text-xs font-semibold text-[#465573]">{route.routeName} <span className="font-normal text-[#8992a8]">· {(data.stopsByRoute[route._id] || []).length} stops</span></p><div className="mt-3 space-y-2">{(data.stopsByRoute[route._id] || []).map((stop) => <form key={stop._id} onSubmit={async (event) => { event.preventDefault(); const values = new FormData(event.currentTarget); const payload = { stopName: values.get("stopName"), latitude: Number(values.get("latitude")), longitude: Number(values.get("longitude")), stopOrder: Number(values.get("stopOrder")) }; await mutate(() => apiRequest(`/stops/${encodeURIComponent(stop._id)}`, { method: "PUT", token, body: JSON.stringify(payload) }), `${stop.stopName} updated.`); }} className="grid gap-2 rounded-xl border border-white bg-white p-3 sm:grid-cols-[1.3fr_1fr_1fr_.6fr_auto_auto] sm:items-end"><Field label="Stop name" name="stopName" required defaultValue={stop.stopName}/><Field label="Latitude" name="latitude" required type="number" step="any" defaultValue={stop.latitude}/><Field label="Longitude" name="longitude" required type="number" step="any" defaultValue={stop.longitude}/><Field label="Order" name="stopOrder" required type="number" min="1" defaultValue={stop.stopOrder}/><button type="submit" disabled={busy} className="min-h-10 rounded-lg bg-[#536bb7] px-3 text-[10px] font-semibold text-white">Save</button><button type="button" disabled={busy} onClick={async () => { if (!window.confirm(`Remove stop ${stop.stopName}?`)) return; await mutate(() => apiRequest(`/stops/${encodeURIComponent(stop._id)}`, { method: "DELETE", token }), `Stop ${stop.stopName} removed.`); }} className="min-h-10 rounded-lg border border-rose-200 px-3 text-[10px] font-semibold text-rose-700">Remove</button></form>)}{(data.stopsByRoute[route._id] || []).length === 0 && <p className="text-[10px] text-[#8992a8]">No stops. Add the first stop above.</p>}</div></div>)}</div></div>
         </div>
       </section>
 

@@ -122,41 +122,6 @@ button, input, select, textarea { font: inherit; }
 #drivers > #driver-create-panel:hover,
 #drivers > #bus-assignment-panel:hover { transform: translateY(-3px); border-color: #c7d2f1; box-shadow: 0 18px 40px rgba(53,67,112,.11); }
 
-[data-admin-tab="overview"] #drivers,
-[data-admin-tab="overview"] #admin-setup,
-[data-admin-tab="overview"] #alerts,
-[data-admin-tab="overview"] #reports { display: none; }
-[data-admin-tab="drivers"] #summary,
-[data-admin-tab="drivers"] #fleet,
-[data-admin-tab="drivers"] #admin-setup,
-[data-admin-tab="drivers"] #alerts,
-[data-admin-tab="drivers"] #reports,
-[data-admin-tab="drivers"] #activity,
-[data-admin-tab="drivers"] #shifts { display: none; }
-[data-admin-tab="drivers"] #drivers > #bus-assignment-panel { display: none; }
-[data-admin-tab="buses"] #summary,
-[data-admin-tab="buses"] #fleet,
-[data-admin-tab="buses"] #alerts,
-[data-admin-tab="buses"] #reports,
-[data-admin-tab="buses"] #activity,
-[data-admin-tab="buses"] #shifts { display: none; }
-[data-admin-tab="buses"] #drivers > #driver-create-panel,
-[data-admin-tab="buses"] #admin-setup > #routes-panel { display: none; }
-[data-admin-tab="routes"] #summary,
-[data-admin-tab="routes"] #fleet,
-[data-admin-tab="routes"] #drivers,
-[data-admin-tab="routes"] #alerts,
-[data-admin-tab="routes"] #reports,
-[data-admin-tab="routes"] #activity,
-[data-admin-tab="routes"] #shifts { display: none; }
-[data-admin-tab="routes"] #admin-setup > #bus-form-panel { display: none; }
-[data-admin-tab="alerts"] #summary,
-[data-admin-tab="alerts"] #fleet,
-[data-admin-tab="alerts"] #drivers,
-[data-admin-tab="alerts"] #admin-setup,
-[data-admin-tab="alerts"] #activity,
-[data-admin-tab="alerts"] #shifts { display: none; }
-
 html[data-theme="dark"] { color-scheme: dark; --color-ink: #e8eefc; --color-canvas: #10172a; }
 html[data-theme="dark"] body { background: var(--color-canvas); color: var(--color-ink); }
 html[data-theme="dark"] .workspace-theme { color: #e8eefc !important; }
