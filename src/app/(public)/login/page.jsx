@@ -34,7 +34,8 @@ export default function LoginPage() {
     saveSessionToken(result.token);
     const params = new URLSearchParams(window.location.search);
     const requestedBookingRoute = params.get("bookingRoute");
-    const commuterDestination = requestedBookingRoute ? `/passenger?routeId=${encodeURIComponent(requestedBookingRoute)}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
+    const requestedBookingSeat = params.get("bookingSeat");
+    const commuterDestination = requestedBookingRoute ? `/passenger?routeId=${encodeURIComponent(requestedBookingRoute)}${requestedBookingSeat ? `&seatNumber=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
     router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : commuterDestination);
   }, [router]);
 

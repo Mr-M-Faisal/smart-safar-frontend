@@ -9,7 +9,8 @@ import PaymentStatus from "@/components/booking/PaymentStatus";
 import SeatPicker from "@/components/booking/SeatPicker";
 import PaymentOptions from "@/components/booking/PaymentOptions";
 import { createTransitSocket } from "@/lib/socket";
-import ProfileMenu from "@/components/layout/ProfileMenu";
+import PublicLayout from "@/components/layout/PublicLayout";
+import BookingConfirmationModal from "@/components/booking/BookingConfirmationModal";
 
 function getLocation() {
   return new Promise((resolve, reject) => {
@@ -19,14 +20,14 @@ function getLocation() {
 }
 
 function dateLabel(value) { return value ? new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(value)) : "—"; }
-function busName(value) { return typeof value === "object" && value ? value.busNumber : "Bus"; }
+function busName(value) { return typeof value === "object" && value ? value.busNumber : value || "Bus"; }
 function routeIdForBus(bus) { return typeof bus?.route === "object" && bus.route ? bus.route._id : bus?.route; }
 
 function PanelTitle({ eyebrow, title, note }) {
   return <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#536bb7]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-[#293553]">{title}</h2></div>{note && <p className="text-xs text-[#8992a8]">{note}</p>}</div>;
 }
 
-export default function PassengerPage() {
+function PassengerDashboard() {
   const router = useRouter();
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -47,6 +48,13 @@ export default function PassengerPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [shareUrl, setShareUrl] = useState("");
   const [activeTab, setActiveTab] = useState("book");
+  const [bookingConfirmation, setBookingConfirmation] = useState(null);
+  useEffect(() => {
+    const syncTabFromHash = () => { const hash = window.location.hash.slice(1); setActiveTab(["history", "security", "report"].includes(hash) ? hash : "book"); };
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, []);
   const selectedRouteBuses = buses.filter((bus) => String(routeIdForBus(bus)) === String(bookingForm.routeId));
   const seatCapacity = selectedRouteBuses.reduce((capacity, bus) => Math.max(capacity, Number(bus.capacity) || 0), 0) || 30;
   const freeSeatsOnRoute = selectedRouteBuses.filter((bus) => bus.status === "active").reduce((sum, bus) => sum + Math.max(0, Number(bus.availableSeats) || 0), 0);
@@ -65,9 +73,11 @@ export default function PassengerPage() {
   }, [buses.map((bus) => bus._id).filter(Boolean).join(","), sessionState]);
 
   useEffect(() => {
-    const requestedRouteId = new URLSearchParams(window.location.search).get("routeId");
-    if (requestedRouteId && routes.some((route) => route._id === requestedRouteId)) {
-      setBookingForm((current) => current.routeId === requestedRouteId ? current : { ...current, routeId: requestedRouteId });
+    const params = new URLSearchParams(window.location.search);
+    const requestedRouteId = params.get("routeId");
+    const requestedSeatNumber = params.get("seatNumber");
+    if (requestedRouteId && routes.some((route) => String(route._id) === requestedRouteId)) {
+      setBookingForm((current) => current.routeId === requestedRouteId ? { ...current, seatNumber: current.seatNumber || requestedSeatNumber || "" } : { ...current, routeId: requestedRouteId, seatNumber: requestedSeatNumber || "" });
     }
   }, [routes]);
 
@@ -97,7 +107,7 @@ export default function PassengerPage() {
     const sessionToken = readSessionToken();
     setToken(sessionToken);
     if (!sessionToken) { setSessionState("signed-out"); return () => { active = false; }; }
-    setSessionState("loading");
+    setSessionState((current) => current === "ready" ? "ready" : "loading");
     reload(sessionToken, () => active).catch((error) => {
       if (!active) return;
       if (error.status === 401) { clearSessionToken(); setToken(null); setSessionState("expired"); }
@@ -110,7 +120,8 @@ export default function PassengerPage() {
     if (sessionState !== "signed-out" && sessionState !== "expired") return;
     const params = new URLSearchParams(window.location.search);
     const requestedRouteId = params.get("routeId");
-    const destination = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}` : window.location.hash === "#booking" ? "/login?booking=1" : "/login";
+    const requestedSeatNumber = params.get("seatNumber");
+    const destination = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}${requestedSeatNumber ? `&bookingSeat=${encodeURIComponent(requestedSeatNumber)}` : ""}` : window.location.hash === "#booking" ? "/login?booking=1" : "/login";
     router.replace(destination);
   }, [sessionState, router]);
 
@@ -143,10 +154,40 @@ export default function PassengerPage() {
     event.preventDefault();
     const pickupLocation = bookingForm.shareLocation ? await getLocation().catch((error) => { setNotice({ type: "error", text: error.message }); return null; }) : null;
     if (bookingForm.shareLocation && !pickupLocation) return;
+    const selectedRoute = routes.find((route) => String(route._id) === String(bookingForm.routeId));
+    const selectedBus = selectedRouteBuses.find((bus) => bus.status === "active") || selectedRouteBuses[0];
     const payload = { routeId: bookingForm.routeId, paymentMethod: bookingForm.paymentMethod === "cash" ? "cash" : "online", shareLocation: bookingForm.shareLocation, seatNumber: bookingForm.seatNumber.trim(), ...(pickupLocation ? { pickupLocation } : {}) };
-    const result = await perform("booking", () => apiRequest("/bookings", { method: "POST", token, body: JSON.stringify(payload) }), (booking) => `Seat ${booking.seatNumber || bookingForm.seatNumber} reserved on ${busName(booking.bus)}. Fare: ${booking.currency || "PKR"} ${booking.fare ?? "—"}. No online payment was taken; pay the driver when boarding.`);
-    if (result && result !== true) setBookingForm((current) => ({ ...current, seatNumber: "", shareLocation: false }));
+    const result = await perform("booking", async () => {
+      const response = await apiRequest("/bookings", { method: "POST", token, body: JSON.stringify(payload) });
+      if (response === false || response?.success === false || response?.status === "failed") throw new Error(response?.message || "The seat could not be reserved. Please try again.");
+      return response;
+    }, null);
+    if (!result) return;
+    const reservation = result === true ? {} : result.booking || result.reservation || result.data || result;
+    if (reservation.success === false || reservation.status === "failed") {
+      setNotice({ type: "error", text: reservation.message || "The seat could not be reserved. Please try again." });
+      return;
+    }
+    const responseRoute = reservation.route && typeof reservation.route === "object" && reservation.route.routeName ? reservation.route : selectedRoute;
+    const responseBus = reservation.bus && typeof reservation.bus === "object" && reservation.bus.busNumber ? reservation.bus : selectedBus;
+    setBookingConfirmation({
+      ...reservation,
+      route: responseRoute,
+      bus: responseBus || reservation.bus,
+      seatNumber: reservation.seatNumber || bookingForm.seatNumber,
+      paymentMethod: reservation.paymentMethod || payload.paymentMethod,
+      fare: reservation.fare ?? reservation.totalFare ?? reservation.amount ?? selectedBus?.fare ?? selectedRoute?.fare,
+      createdAt: reservation.createdAt || reservation.bookedAt || new Date().toISOString(),
+    });
+    setBookingForm((current) => ({ ...current, seatNumber: "", shareLocation: false }));
   }
+
+  const chooseDashboardTab = useCallback((tab) => {
+    setActiveTab(tab);
+    const hash = tab === "book" ? "booking" : tab;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${hash}`);
+  }, []);
+  const closeBookingConfirmation = useCallback(() => setBookingConfirmation(null), []);
 
   async function toggleBookingLocation(booking) {
     if (booking.status !== "confirmed") return;
@@ -184,27 +225,28 @@ export default function PassengerPage() {
     catch { setNotice({ type: "error", text: "Could not copy automatically. Select and copy the link below." }); }
   }
 
-  function signOut() { clearSessionToken(); setToken(null); setProfile(null); setSessionState("signed-out"); }
-
   if (["signed-out", "expired"].includes(sessionState)) return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><p className="mx-auto max-w-2xl rounded-2xl bg-white p-5 text-sm text-[#68738e]">Opening passenger sign-in…</p></main>;
   if (sessionState === "denied") {
     const denied = true;
-    const requestedRouteId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("routeId");
-    const signInHref = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}` : "/login";
+    const deniedParams = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+    const requestedRouteId = deniedParams.get("routeId");
+    const requestedSeatNumber = deniedParams.get("seatNumber");
+    const signInHref = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}${requestedSeatNumber ? `&bookingSeat=${encodeURIComponent(requestedSeatNumber)}` : ""}` : "/login";
     return <main className="min-h-[70vh] bg-[#f4f5fb] px-4 py-10"><section className="mx-auto max-w-2xl rounded-3xl border border-white bg-white p-7 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Passenger account</p><h1 className="mt-3 text-2xl font-semibold text-[#293553]">{denied ? "Passenger access only" : sessionState === "expired" ? "Please sign in again" : "Sign in to book your ride"}</h1><p className="mt-2 text-sm leading-6 text-[#74809a]">{denied ? "This page is for passenger accounts. Use an administrator or driver account in its own workspace." : "Create a passenger account or sign in to view bookings, route alerts, and trip sharing."}</p><Link href={signInHref} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-[#536bb7] px-5 py-3 text-sm font-semibold text-white">Sign in or create account →</Link><Link href="/routes" className="ml-3 inline-flex min-h-11 items-center rounded-xl border border-[#dfe3f1] px-5 py-3 text-sm font-semibold text-[#53617e]">Browse routes</Link></section></main>;
   }
   if (sessionState === "loading") return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 text-sm text-[#68738e]">Loading your passenger account…</div></main>;
   if (sessionState === "error") return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><div className="mx-auto max-w-5xl rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">{notice?.text || "Could not load your passenger account."}<button onClick={() => setRefreshKey((key) => key + 1)} className="ml-3 font-semibold underline">Try again</button></div></main>;
 
   return (
+    <>
     <main className="workspace-theme min-h-screen bg-[#f4f5fb] px-4 py-7 text-[#293553] sm:px-8 sm:py-10 lg:px-12">
       <div className="mx-auto max-w-[1240px]">
-        <section className="flex flex-col justify-between gap-4 rounded-[1.75rem] bg-gradient-to-br from-[#26386e] via-[#354b8d] to-[#4560a8] p-6 text-white shadow-[0_18px_45px_rgba(47,66,126,.18)] sm:flex-row sm:items-end sm:p-8"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#a8efdf]">Passenger dashboard</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Your journeys, {profile?.name?.split(" ")[0] || "all in one place"}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Book a ride, check route updates, and share your trip with people you trust.</p></div><ProfileMenu name={profile?.name} email={profile?.email} role="Passenger" onSignOut={signOut} /></section>
+        <section className="flex flex-col justify-between gap-4 rounded-[1.75rem] bg-gradient-to-br from-[#26386e] via-[#354b8d] to-[#4560a8] p-6 text-white shadow-[0_18px_45px_rgba(47,66,126,.18)] sm:flex-row sm:items-end sm:p-8"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#a8efdf]">Passenger dashboard</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Your journeys, {profile?.name?.split(" ")[0] || "all in one place"}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Book a ride, check route updates, and share your trip with people you trust.</p></div></section>
 
         {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`mt-5 rounded-2xl border px-4 py-3 text-sm leading-5 ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
 
         <div role="tablist" aria-label="Passenger dashboard sections" className="mt-6 grid grid-cols-2 gap-2 rounded-2xl border border-[#e3e7f2] bg-white p-2 shadow-sm sm:grid-cols-4">
-          {[ ["book", "Book a ride", "Choose route, seat & payment"], ["history", "My bookings", "View recent and past trips"], ["security", "Trip security", "Share your trip or location"], ["report", "Report an issue", "Tell us about a bus problem"] ].map(([id, title, description]) => <button key={id} type="button" role="tab" id={"passenger-tab-" + id} aria-selected={activeTab === id} aria-controls={"passenger-panel-" + id} onClick={() => setActiveTab(id)} className={"min-h-[76px] rounded-xl px-3 py-3 text-left transition duration-200 sm:px-4 " + (activeTab === id ? "bg-[#536bb7] text-white shadow-md shadow-[#536bb7]/20" : "text-[#53617e] hover:-translate-y-0.5 hover:bg-[#f1f3fb] hover:text-[#34405d]")}><span className="block text-xs font-bold sm:text-sm">{title}</span><span className={"mt-1 hidden text-[10px] leading-4 sm:block " + (activeTab === id ? "text-white/75" : "text-[#8992a8]")}>{description}</span></button>)}
+          {[ ["book", "Book a ride", "Choose route, seat & payment"], ["history", "My bookings", "View recent and past trips"], ["security", "Trip security", "Share your trip or location"], ["report", "Report an issue", "Tell us about a bus problem"] ].map(([id, title, description]) => <button key={id} type="button" role="tab" id={"passenger-tab-" + id} aria-selected={activeTab === id} aria-controls={"passenger-panel-" + id} onClick={() => chooseDashboardTab(id)} className={"min-h-[76px] rounded-xl px-3 py-3 text-left transition duration-200 sm:px-4 " + (activeTab === id ? "bg-[#536bb7] text-white shadow-md shadow-[#536bb7]/20" : "text-[#53617e] hover:-translate-y-0.5 hover:bg-[#f1f3fb] hover:text-[#34405d]")}><span className="block text-xs font-bold sm:text-sm">{title}</span><span className={"mt-1 hidden text-[10px] leading-4 sm:block " + (activeTab === id ? "text-white/75" : "text-[#8992a8]")}>{description}</span></button>)}
         </div>
 
         {activeTab === "book" && <div role="tabpanel" id="passenger-panel-book" aria-labelledby="passenger-tab-book" className="mt-5 grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
@@ -240,6 +282,11 @@ export default function PassengerPage() {
         </div>
       </div>
     </main>
+    {bookingConfirmation && <BookingConfirmationModal booking={bookingConfirmation} onClose={closeBookingConfirmation} onViewBookings={() => { chooseDashboardTab("history"); closeBookingConfirmation(); }} onBookAnother={() => { closeBookingConfirmation(); document.getElementById("booking")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
+    </>
   );
 }
 
+export default function PassengerPage() {
+  return <PublicLayout><PassengerDashboard /></PublicLayout>;
+}

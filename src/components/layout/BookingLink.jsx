@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { readSessionToken } from "@/lib/session";
 import { apiRequest } from "@/lib/api";
 
-export default function BookingLink({ routeId, className, children, ...props }) {
+export default function BookingLink({ routeId, seatNumber, className, children, ...props }) {
   const router = useRouter();
   const linkProps = Object.fromEntries(Object.entries(props).filter(([key]) => key !== "href"));
-  const routeParam = routeId ? `bookingRoute=${encodeURIComponent(routeId)}` : "booking=1";
+  const routeParam = routeId ? `bookingRoute=${encodeURIComponent(routeId)}${seatNumber ? `&bookingSeat=${encodeURIComponent(seatNumber)}` : ""}` : "booking=1";
   const href = `/login?${routeParam}`;
 
   async function openBooking(event) {
@@ -18,7 +18,7 @@ export default function BookingLink({ routeId, className, children, ...props }) 
     try {
       const profile = await apiRequest("/auth/profile", { token });
       if (profile.role === "commuter") {
-        router.push(`/passenger${routeId ? `?routeId=${encodeURIComponent(routeId)}` : ""}#booking`);
+        router.push(`/passenger${routeId ? `?routeId=${encodeURIComponent(routeId)}${seatNumber ? `&seatNumber=${encodeURIComponent(seatNumber)}` : ""}` : ""}#booking`);
         return;
       }
     } catch {
