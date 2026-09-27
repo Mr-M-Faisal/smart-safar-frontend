@@ -27,11 +27,10 @@ export default function LoginPage() {
 
   const finishSignIn = useCallback((result) => {
     if (!result?.token || !["commuter", "driver", "admin"].includes(result.role)) {
-      clearSessionToken();
       setError("The server returned an invalid account response. Please try again.");
       return;
     }
-    saveSessionToken(result.token);
+    saveSessionToken(result.token, result.role);
     const params = new URLSearchParams(window.location.search);
     const requestedBookingRoute = params.get("bookingRoute");
     const requestedBookingSeat = params.get("bookingSeat");

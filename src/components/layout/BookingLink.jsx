@@ -13,7 +13,7 @@ export default function BookingLink({ routeId, seatNumber, className, children, 
 
   async function openBooking(event) {
     event.preventDefault();
-    const token = readSessionToken();
+    const token = readSessionToken("commuter");
     if (!token) { router.push(href); return; }
     try {
       const profile = await apiRequest("/auth/profile", { token });

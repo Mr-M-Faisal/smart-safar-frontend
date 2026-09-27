@@ -56,7 +56,6 @@ export default function DriverHomePage() {
     const currentProfile = await apiRequest("/auth/profile", { token: sessionToken });
     if (!isActive()) return;
     if (currentProfile.role !== "driver") {
-      clearSessionToken();
       setToken(null);
       setProfile(null);
       setBus(null);
@@ -84,7 +83,7 @@ export default function DriverHomePage() {
 
   useEffect(() => {
     let active = true;
-    const sessionToken = readSessionToken();
+    const sessionToken = readSessionToken("driver");
     setToken(sessionToken);
     if (!sessionToken) {
       setPageState("signed-out");
@@ -95,7 +94,7 @@ export default function DriverHomePage() {
     reload(sessionToken, () => active).catch((error) => {
       if (!active) return;
       if (error.status === 401) {
-        clearSessionToken();
+        clearSessionToken("driver");
         setToken(null);
         setPageState("expired");
       } else {
@@ -117,7 +116,7 @@ export default function DriverHomePage() {
       await reload(token);
     } catch (error) {
       if (error.status === 401) {
-        clearSessionToken();
+        clearSessionToken("driver");
         setToken(null);
         setProfile(null);
         setBus(null);
@@ -152,7 +151,7 @@ export default function DriverHomePage() {
   }
 
   function signOut() {
-    clearSessionToken();
+    clearSessionToken("driver");
     setToken(null);
     setProfile(null);
     setBus(null);
