@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { readSessionToken } from "@/lib/session";
+import { apiRequest } from "@/lib/api";
 
 export default function BookingLink({ routeId, className, children, ...props }) {
   const router = useRouter();
@@ -10,11 +11,18 @@ export default function BookingLink({ routeId, className, children, ...props }) 
   const routeParam = routeId ? `bookingRoute=${encodeURIComponent(routeId)}` : "booking=1";
   const href = `/login?${routeParam}`;
 
-  function openBooking(event) {
+  async function openBooking(event) {
     event.preventDefault();
-    if (readSessionToken()) {
-      router.push(`/passenger${routeId ? `?routeId=${encodeURIComponent(routeId)}` : ""}#booking`);
-      return;
+    const token = readSessionToken();
+    if (!token) { router.push(href); return; }
+    try {
+      const profile = await apiRequest("/auth/profile", { token });
+      if (profile.role === "commuter") {
+        router.push(`/passenger${routeId ? `?routeId=${encodeURIComponent(routeId)}` : ""}#booking`);
+        return;
+      }
+    } catch {
+      // Send users with an invalid or unverifiable session to sign-in.
     }
     router.push(href);
   }
