@@ -44,8 +44,10 @@ export default function DriverHomePage() {
   const [locationsMessage, setLocationsMessage] = useState("");
   const [locationRefresh, setLocationRefresh] = useState(0);
   const [seatBusy, setSeatBusy] = useState(false);
+  const [seatState, setSeatState] = useState({ seats: [], occupied: 0, capacity: 0 });
   const [shiftClock, setShiftClock] = useState(Date.now());
   const [lastShiftEndedAt, setLastShiftEndedAt] = useState(null);
+  const activeShift = profile?.activeShift;
 
   useEffect(() => {
     const timer = window.setInterval(() => setShiftClock(Date.now()), 1000);
@@ -129,23 +131,19 @@ export default function DriverHomePage() {
     }
   }
 
-  async function updatePassengerCount(change) {
-    if (!token || !bus || !activeShift || seatBusy) return;
-    const capacity = Number(bus.capacity) || 0;
-    const currentCount = Math.max(0, capacity - (Number(bus.availableSeats) || 0));
-    const passengerCount = Math.min(capacity, Math.max(0, currentCount + change));
-    if (passengerCount === currentCount) return;
+  const loadDriverSeats = useCallback(async () => {
+    if (!token || !activeShift) return;
+    try { setSeatState(await apiRequest("/buses/assigned/seats", { token })); } catch { /* retain current map while reconnecting */ }
+  }, [token, activeShift]);
+
+  async function seatAction(seatNumber, action) {
+    if (!token || seatBusy) return;
     setSeatBusy(true);
-    setPageMessage("");
     try {
-      const updatedBus = await apiRequest(`/buses/${encodeURIComponent(bus._id)}/seats`, {
-        method: "PATCH", token, body: JSON.stringify({ availableSeats: capacity - passengerCount }),
-      });
-      setBus(updatedBus);
-      setPageMessage("Passenger count updated. Seat availability is now live on the commuter map.");
-    } catch (error) {
-      setPageMessage(error.message || "Could not update the passenger count.");
-    } finally {
+      await apiRequest(action === "walk-in" ? "/buses/assigned/seats/walk-in" : `/buses/assigned/seats/${encodeURIComponent(seatNumber)}`, { method: action === "walk-in" ? "POST" : "PATCH", token, ...(action === "walk-in" ? {} : { body: JSON.stringify({ action }) }) });
+      await loadDriverSeats();
+    } catch (error) { setPageMessage(error.message || "Could not update that seat."); }
+    finally {
       setSeatBusy(false);
     }
   }
@@ -159,10 +157,15 @@ export default function DriverHomePage() {
     setPageMessage("");
   }
 
-  const activeShift = profile?.activeShift;
   const route = activeShift?.route || bus?.route;
   const hasBusAssignment = Boolean(assignedBusId(profile?.assignedBus) || activeShift?.bus?._id || bus?._id);
   const assignedBusName = activeShift?.bus?.busNumber || bus?.busNumber;
+
+  useEffect(() => {
+    if (!token || !activeShift || pageState !== "ready") { setSeatState({ seats: [], occupied: 0, capacity: 0 }); return undefined; }
+    loadDriverSeats(); const timer = window.setInterval(loadDriverSeats, 5000);
+    return () => window.clearInterval(timer);
+  }, [token, activeShift?._id, pageState, loadDriverSeats]);
 
   useEffect(() => {
     if (!token || pageState !== "ready" || !activeShift) {
@@ -197,6 +200,7 @@ export default function DriverHomePage() {
     socket.on("connect_error", () => {
       if (mounted) setLocationsMessage("Live updates are reconnecting. You can still refresh the location list.");
     });
+    socket.on("driverSeatStateUpdate", (update) => { if (mounted) setSeatState(update); });
     socket.on("passengerLocationUpdate", (update) => {
       if (!mounted || !update?.bookingId) return;
       setPassengerLocations((current) => {
@@ -249,7 +253,7 @@ export default function DriverHomePage() {
               {hasBusAssignment && <div className="mt-6 grid gap-3 sm:grid-cols-2"><InfoCard label="Route" value={route?.routeName || "Not available"}/><InfoCard label="Direction" value={activeShift?.bus?.direction || bus?.direction || "Ready to start"}/><InfoCard label="Available seats" value={bus?.availableSeats != null ? `${bus.availableSeats}${bus.capacity != null ? ` / ${bus.capacity}` : ""}` : "—"}/><InfoCard label="Bus status" value={bus?.status || activeShift?.bus?.status || "—"}/></div>}
               {activeShift && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-r from-white to-[#f0f3ff] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Shift timer</p><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-medium text-[#74809a]">Started {timeLabel(activeShift.startedAt)}</p><p className="mt-1 font-mono text-2xl font-bold tracking-tight text-[#405ba7]">{elapsedLabel(activeShift.startedAt, shiftClock)}</p></div><span className="rounded-full bg-[#e0f7ef] px-2.5 py-1 text-[10px] font-semibold capitalize text-[#167b6e]">{activeShift.startDirection || "outbound"} journey · running</span></div></div>}
               {!activeShift && lastShiftEndedAt && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-[#f7f8fc] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Last shift ended</p><p className="mt-1 text-sm font-semibold text-[#34405d]">{timeLabel(lastShiftEndedAt)}</p></div>}
-              {activeShift && bus?.capacity != null && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-br from-[#f5f7ff] to-white p-4 sm:p-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#7181ad]">Live passenger count</p><p className="mt-1 text-3xl font-bold tracking-tight text-[#293553]">{Math.max(0, Number(bus.capacity) - (Number(bus.availableSeats) || 0))}<span className="ml-1 text-sm font-medium text-[#8992a8]">/ {bus.capacity} onboard</span></p></div><div className="flex gap-2"><button type="button" aria-label="Decrease passenger count" disabled={seatBusy || Number(bus.availableSeats) >= Number(bus.capacity)} onClick={() => updatePassengerCount(-1)} className="grid h-12 w-12 place-items-center rounded-xl border border-[#dfe4f3] bg-white text-xl font-semibold text-[#536bb7] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f4f6fc] disabled:opacity-40">−</button><button type="button" aria-label="Increase passenger count" disabled={seatBusy || Number(bus.availableSeats) <= 0} onClick={() => updatePassengerCount(1)} className="grid h-12 w-12 place-items-center rounded-xl bg-[#536bb7] text-xl font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#43599f] disabled:opacity-40">+</button></div></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e9edff]"><div className="h-full rounded-full bg-gradient-to-r from-[#7185c6] to-[#536bb7] transition-[width] duration-500" style={{ width: `${Math.min(100, Math.max(0, ((Number(bus.capacity) - (Number(bus.availableSeats) || 0)) / Number(bus.capacity)) * 100))}%` }}/></div><p className="mt-2 text-[10px] leading-4 text-[#8992a8]">Update as riders board or leave. Available seats will update on the commuter map.</p></div>}
+              {activeShift && <section className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-br from-[#f5f7ff] to-white p-4 sm:p-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#7181ad]">Live seat map</p><p className="mt-1 text-xl font-bold text-[#293553]">{seatState.occupied || 0} / {seatState.capacity || bus?.capacity || 0} occupied</p></div><button type="button" disabled={seatBusy} onClick={() => seatAction(null,"walk-in")} className="min-h-12 rounded-xl bg-gradient-to-r from-[#263a70] to-[#536bb7] px-5 text-sm font-bold text-white shadow-md disabled:opacity-50">+ Walk-in</button></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{(seatState.seats || []).map(seat => <article key={seat.seatNumber} className={`rounded-xl border p-2 text-center text-xs ${seat.status === "available" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : seat.status === "reserved" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}><strong>{seat.seatNumber}</strong><span className="mt-1 block text-[9px] capitalize">{seat.status}</span>{seat.passengerName && <span className="block truncate text-[9px]">{seat.passengerName}{seat.shareLocation ? " · 📍" : ""}</span>}{seat.status === "reserved" ? <div className="mt-2 flex justify-center gap-1"><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"board")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">Mark boarded</button><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"no_show")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">No-show</button></div> : <button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,seat.status === "occupied" ? "release" : "occupy")} className="mt-2 rounded bg-white px-2 py-1 text-[9px] font-semibold">{seat.status === "occupied" ? "Passenger got off" : "Mark occupied"}</button>}</article>)}</div><p className="mt-2 text-[10px] text-[#8992a8]">Available · Reserved · Occupied. All seat totals are calculated from the seat map.</p></section>}
             </section>
 
             <section className="driver-glass rounded-[1.75rem] border border-white/70 p-5 shadow-[0_18px_48px_rgba(35,49,87,.13)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(35,49,87,.19)] sm:p-7">

@@ -11,6 +11,7 @@ import PaymentOptions from "@/components/booking/PaymentOptions";
 import { createTransitSocket } from "@/lib/socket";
 import PublicLayout from "@/components/layout/PublicLayout";
 import BookingConfirmationModal from "@/components/booking/BookingConfirmationModal";
+import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 
 function getLocation() {
   return new Promise((resolve, reject) => {
@@ -49,8 +50,10 @@ function PassengerDashboard() {
   const [routeAlerts, setRouteAlerts] = useState([]);
   const [routeAlertsState, setRouteAlertsState] = useState("idle");
   const [routeAlertsRefresh, setRouteAlertsRefresh] = useState(0);
-  const [routeId, setRouteId] = useState("");
-  const [bookingForm, setBookingForm] = useState({ routeId: "", seatNumber: "", paymentMethod: "cash", shareLocation: false });
+  const [bookingForm, setBookingForm] = useState({ routeId: "", busId: "", seatNumber: "", paymentMethod: "cash", shareLocation: false });
+  const [activeRouteBuses, setActiveRouteBuses] = useState([]);
+  const [seatMap, setSeatMap] = useState([]);
+  const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [safetyBusId, setSafetyBusId] = useState("");
   const [reportForm, setReportForm] = useState({ bus: "", reportType: "condition", description: "" });
   const [busy, setBusy] = useState("");
@@ -65,47 +68,66 @@ function PassengerDashboard() {
     window.addEventListener("hashchange", syncTabFromHash);
     return () => window.removeEventListener("hashchange", syncTabFromHash);
   }, []);
-  const selectedRouteBuses = buses.filter((bus) => String(routeIdForBus(bus)) === String(bookingForm.routeId));
-  const seatCapacity = selectedRouteBuses.reduce((capacity, bus) => Math.max(capacity, Number(bus.capacity) || 0), 0) || 30;
-  const freeSeatsOnRoute = selectedRouteBuses.filter(isBookableBus).reduce((sum, bus) => sum + Math.max(0, Number(bus.availableSeats) || 0), 0);
-  const routeBookingReadiness = bookingForm.routeId ? routeReadinessMessage(selectedRouteBuses) : "";
+  const selectedRouteBuses = activeRouteBuses;
+  const selectedBus = selectedRouteBuses.find((bus) => String(bus._id) === String(bookingForm.busId)) || null;
+  const freeSeatsOnRoute = Number(selectedBus?.availableSeats) || 0;
 
   useEffect(() => {
     const busIds = buses.map((bus) => bus._id).filter(Boolean);
     if (sessionState !== "ready" || !busIds.length) return undefined;
     const socket = createTransitSocket();
-    socket.on("connect", () => busIds.forEach((id) => socket.emit("watchBus", id)));
-    socket.on("seatAvailabilityUpdate", (update) => {
+    socket.on("connect", () => { busIds.forEach((id) => socket.emit("watchBus", id)); socket.emit("watchPassengerBookings", { token }); });
+    socket.on("seatStateUpdate", (update) => {
       if (!update?.busId) return;
-      setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.availableSeats, ...(update.capacity != null ? { capacity: update.capacity } : {}) } : bus));
+      if (String(update.busId) === String(bookingForm.busId)) setSeatMap(update.seats || []);
+      setActiveRouteBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.available } : bus));
     });
+    socket.on("bookingStatusUpdate", (update) => { setNotice({ type: "error", text: update.message || `Booking status: ${update.status}` }); setRefreshKey(key => key + 1); });
     socket.connect();
     return () => socket.disconnect();
-  }, [buses.map((bus) => bus._id).filter(Boolean).join(","), sessionState]);
+  }, [buses.map((bus) => bus._id).filter(Boolean).join(","), sessionState, bookingForm.busId, token]);
 
   useEffect(() => {
     if (sessionState !== "ready" || !token || !bookingForm.routeId || activeTab !== "book") return undefined;
     let active = true;
     const refreshRouteBuses = async () => {
       try {
-        const result = await apiRequest(`/buses?route=${encodeURIComponent(bookingForm.routeId)}`, { token });
+        const result = await apiRequest(`/buses/route/${encodeURIComponent(bookingForm.routeId)}/active`, { token });
         if (!active || !Array.isArray(result)) return;
-        setBuses((current) => [...current.filter((bus) => String(routeIdForBus(bus)) !== String(bookingForm.routeId)), ...result]);
+        setActiveRouteBuses(result);
+        setBookingForm(current => {
+          const savedBus = current.busId && result.some(bus => String(bus._id) === String(current.busId)) ? current.busId : result.length === 1 ? result[0]._id : "";
+          if (savedBus !== current.busId) saveBookingSelection({ routeId: current.routeId, busId: savedBus });
+          return { ...current, busId: savedBus };
+        });
       } catch {
         // Preserve the last known availability if a refresh is temporarily unavailable.
       }
     };
     refreshRouteBuses();
-    const timer = window.setInterval(refreshRouteBuses, 15000);
+    const timer = window.setInterval(refreshRouteBuses, 5000);
     return () => { active = false; window.clearInterval(timer); };
   }, [activeTab, bookingForm.routeId, sessionState, token]);
 
   useEffect(() => {
+    if (!token || !bookingForm.busId || activeTab !== "book") { setSeatMap([]); return undefined; }
+    let active = true;
+    const refresh = async () => {
+      try { const result = await apiRequest(`/buses/${encodeURIComponent(bookingForm.busId)}/seats`, { token }); if (active) { setSeatMap(result.seats || []); setActiveRouteBuses(current => current.map(bus => String(bus._id) === String(bookingForm.busId) ? { ...bus, availableSeats: result.available } : bus)); } }
+      catch { if (active) setSeatMap([]); }
+    };
+    refresh(); const timer = window.setInterval(refresh, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [token, bookingForm.busId, activeTab, refreshKey]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedRouteId = params.get("routeId");
-    const requestedSeatNumber = params.get("seatNumber");
+    const saved = readBookingSelection();
+    const requestedRouteId = params.get("route") || params.get("routeId") || saved.routeId;
+    const requestedBusId = params.get("bus") || saved.busId;
+    const requestedSeatNumber = params.get("seat") || params.get("seatNumber");
     if (requestedRouteId && routes.some((route) => String(route._id) === requestedRouteId)) {
-      setBookingForm((current) => current.routeId === requestedRouteId ? { ...current, seatNumber: current.seatNumber || requestedSeatNumber || "" } : { ...current, routeId: requestedRouteId, seatNumber: requestedSeatNumber || "" });
+      setBookingForm((current) => current.routeId === requestedRouteId ? { ...current, busId: current.busId || requestedBusId || "", seatNumber: current.seatNumber || requestedSeatNumber || "" } : { ...current, routeId: requestedRouteId, busId: requestedBusId || "", seatNumber: requestedSeatNumber || "" });
     }
   }, [routes]);
 
@@ -147,21 +169,23 @@ function PassengerDashboard() {
   useEffect(() => {
     if (sessionState !== "signed-out" && sessionState !== "expired") return;
     const params = new URLSearchParams(window.location.search);
-    const requestedRouteId = params.get("routeId");
-    const requestedSeatNumber = params.get("seatNumber");
-    const destination = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}${requestedSeatNumber ? `&bookingSeat=${encodeURIComponent(requestedSeatNumber)}` : ""}` : window.location.hash === "#booking" ? "/login?booking=1" : "/login";
+    const requestedRouteId = params.get("route") || params.get("routeId");
+    const requestedBusId = params.get("bus");
+    const requestedSeatNumber = params.get("seat") || params.get("seatNumber");
+    const destination = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}${requestedBusId ? `&bookingBus=${encodeURIComponent(requestedBusId)}` : ""}${requestedSeatNumber ? `&bookingSeat=${encodeURIComponent(requestedSeatNumber)}` : ""}` : window.location.hash === "#booking" ? "/login?booking=1" : "/login";
     router.replace(destination);
   }, [sessionState, router]);
 
   useEffect(() => {
     let active = true;
+    const routeId = bookingForm.routeId;
     if (!token || !routeId) { setRouteAlerts([]); setRouteAlertsState("idle"); return () => { active = false; }; }
     setRouteAlertsState("loading");
     apiRequest(`/route-alerts/route/${encodeURIComponent(routeId)}`, { token })
       .then((result) => { if (active) { setRouteAlerts(Array.isArray(result) ? result : []); setRouteAlertsState("ready"); } })
       .catch(() => { if (active) { setRouteAlerts([]); setRouteAlertsState("error"); } });
     return () => { active = false; };
-  }, [token, routeId, refreshKey, routeAlertsRefresh]);
+  }, [token, bookingForm.routeId, refreshKey, routeAlertsRefresh]);
 
   async function perform(label, action, success) {
     if (!token || busy) return false;
@@ -173,6 +197,7 @@ function PassengerDashboard() {
       return result || true;
     } catch (error) {
       if (error.status === 401) { clearSessionToken("commuter"); setToken(null); setProfile(null); setSessionState("expired"); }
+      if (error.status === 409 && /seat/i.test(error.message || "")) setRefreshKey(key => key + 1);
       const readinessError = /No active assigned bus is currently available|does not have a valid active driver shift/i.test(error.message || "");
       setNotice({ type: "error", text: readinessError ? "A bus and driver may be assigned, but the server cannot confirm an active driver shift. Ask the driver to start their shift, then check availability again." : error.message || "That action could not be completed. Please try again." });
       return false;
@@ -184,8 +209,8 @@ function PassengerDashboard() {
     const pickupLocation = bookingForm.shareLocation ? await getLocation().catch((error) => { setNotice({ type: "error", text: error.message }); return null; }) : null;
     if (bookingForm.shareLocation && !pickupLocation) return;
     const selectedRoute = routes.find((route) => String(route._id) === String(bookingForm.routeId));
-    const selectedBus = selectedRouteBuses.find((bus) => bus.status === "active") || selectedRouteBuses[0];
-    const payload = { routeId: bookingForm.routeId, paymentMethod: bookingForm.paymentMethod === "cash" ? "cash" : "online", shareLocation: bookingForm.shareLocation, seatNumber: bookingForm.seatNumber.trim(), ...(pickupLocation ? { pickupLocation } : {}) };
+    const selectedBus = selectedRouteBuses.find((bus) => String(bus._id) === String(bookingForm.busId));
+    const payload = { routeId: bookingForm.routeId, bus: bookingForm.busId, paymentMethod: bookingForm.paymentMethod === "cash" ? "cash" : "online", shareLocation: bookingForm.shareLocation, seatNumber: bookingForm.seatNumber.trim(), ...(pickupLocation ? { pickupLocation } : {}) };
     const result = await perform("booking", async () => {
       const response = await apiRequest("/bookings", { method: "POST", token, body: JSON.stringify(payload) });
       if (response === false || response?.success === false || response?.status === "failed") throw new Error(response?.message || "The seat could not be reserved. Please try again.");
@@ -280,19 +305,19 @@ function PassengerDashboard() {
 
         {activeTab === "book" && <div role="tabpanel" id="passenger-panel-book" aria-labelledby="passenger-tab-book" className="mt-5 grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
           <section id="booking" className="scroll-mt-24 rounded-3xl border border-white bg-white p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7"><PanelTitle eyebrow="Simple 3-step booking" title="Reserve your seat" note={`${routes.length} routes`}/><p className="mt-2 text-xs leading-5 text-[#7b859c]">Choose a route, pick a seat number, then confirm. Seats appear when an assigned driver has started a shift; availability refreshes while this screen is open.</p>
-            <form onSubmit={bookRide} className="mt-5 space-y-5"><label className="block"><span className="text-xs font-semibold text-[#596681]">1 · Choose your route</span><select required value={bookingForm.routeId} onChange={(event) => setBookingForm({ ...bookingForm, routeId: event.target.value, seatNumber: "" })} className="mt-1.5 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-[#fbfcff] px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">Select a route</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName} · {route.startPoint} to {route.endPoint}</option>)}</select></label>
-              {bookingForm.routeId && <div className="rounded-2xl bg-[#f7f8fc] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-[#596681]">2 · Choose your seat number</p><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${freeSeatsOnRoute > 0 ? "bg-[#e8f8f5] text-[#167b6e]" : "bg-[#fff2e9] text-[#a75b2a]"}`}><span className={`h-1.5 w-1.5 rounded-full ${freeSeatsOnRoute > 0 ? "bg-[#20bba5]" : "bg-[#e58d4f]"}`}/> {freeSeatsOnRoute} seats available on active buses</span></div><p className="mt-1 text-[10px] text-[#8992a8]">Availability updates while this booking screen is open. The server confirms your selected seat before reserving.</p>{freeSeatsOnRoute > 0 ? <div className="mt-2"><SeatPicker capacity={seatCapacity} value={bookingForm.seatNumber} onChange={(seatNumber) => setBookingForm({ ...bookingForm, seatNumber })}/></div> : <div role="status" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f3dfcf] bg-white p-3"><p className="min-w-0 flex-1 text-xs leading-5 text-[#8d654c]">{routeBookingReadiness}</p><button type="button" onClick={() => setRefreshKey((key) => key + 1)} className="min-h-9 shrink-0 rounded-lg border border-[#e8d7c8] px-3 text-[10px] font-semibold text-[#795d49] transition hover:bg-[#fff9f4]">Check again</button></div>}</div>}
+            <form onSubmit={bookRide} className="mt-5 space-y-5">{bookingForm.routeId && !showRoutePicker ? <div className="rounded-2xl border border-[#e4e8f5] bg-[#f8f9fd] p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-[#74809a]">Selected route</p><div className="mt-1 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-[#34405d]">{routes.find(r => String(r._id) === String(bookingForm.routeId))?.routeName || "Route"}</p><p className="mt-1 text-xs text-[#74809a]">{routes.find(r => String(r._id) === String(bookingForm.routeId))?.startPoint} → {routes.find(r => String(r._id) === String(bookingForm.routeId))?.endPoint}</p></div><button type="button" onClick={() => setShowRoutePicker(true)} className="text-xs font-semibold text-[#536bb7] underline">Change route</button></div></div> : <label className="block"><span className="text-xs font-semibold text-[#596681]">1 · Choose your route</span><select required value={bookingForm.routeId} onChange={(event) => { const routeId = event.target.value; setBookingForm({ ...bookingForm, routeId, busId: "", seatNumber: "" }); saveBookingSelection({ routeId, busId: "" }); setShowRoutePicker(false); }} className="mt-1.5 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-[#fbfcff] px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">Select a route</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName} · {route.startPoint} to {route.endPoint}</option>)}</select></label>}
+              {bookingForm.routeId && <div className="rounded-2xl bg-[#f7f8fc] p-4"><p className="text-xs font-semibold text-[#596681]">2 · Choose an active bus</p>{selectedRouteBuses.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{selectedRouteBuses.map(bus => <button type="button" key={bus._id} onClick={() => { setBookingForm({...bookingForm,busId:bus._id,seatNumber:""}); saveBookingSelection({routeId:bookingForm.routeId,busId:bus._id}); }} aria-pressed={String(bus._id)===String(bookingForm.busId)} className={`rounded-xl border p-3 text-left text-xs ${String(bus._id)===String(bookingForm.busId)?"border-[#536bb7] bg-[#eef1fc]":"border-[#e3e7f1] bg-white"}`}><strong>{bus.busNumber || `Bus ${bus._id.slice(-5)}`}</strong><span className="mt-1 block text-[#74809a]">{bus.availableSeats} free seats{bus.etaMinutes != null ? ` · ETA ${Math.round(bus.etaMinutes)} min` : ""}</span></button>)}</div> : <p className="mt-2 rounded-xl bg-white p-3 text-xs text-[#74809a]">No buses running on this route right now</p>}{selectedBus && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#596681]">3 · Choose an available seat</p><SeatPicker capacity={selectedBus.capacity} seats={seatMap} value={bookingForm.seatNumber} onChange={(seatNumber) => setBookingForm({ ...bookingForm, seatNumber })}/></div>}</div>}
               {bookingForm.routeId && <PaymentOptions value={bookingForm.paymentMethod} onChange={(paymentMethod) => setBookingForm({ ...bookingForm, paymentMethod })}/>}
               <label className="flex items-start gap-3 rounded-xl bg-[#f6f7fb] p-3.5"><input type="checkbox" checked={bookingForm.shareLocation} onChange={(event) => setBookingForm({ ...bookingForm, shareLocation: event.target.checked })} className="mt-0.5 h-4 w-4 accent-[#536bb7]"/><span className="text-xs leading-5 text-[#596681]"><strong className="font-semibold text-[#34405d]">Share pickup location with my driver</strong><span className="mt-0.5 block text-[#8992a8]">Optional. Your browser will ask for location access, and sharing is only sent for this confirmed booking.</span></span></label>
-              {bookingForm.routeId && <button disabled={busy !== "" || !bookingForm.seatNumber || freeSeatsOnRoute === 0} className="min-h-12 w-full rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f] disabled:cursor-not-allowed disabled:opacity-50">{busy === "booking" ? "Reserving seat…" : freeSeatsOnRoute === 0 ? "Waiting for an active bus" : bookingForm.seatNumber ? `3 · Reserve seat ${bookingForm.seatNumber} · Pay at boarding` : "Choose a seat to continue"}<span className="ml-2" aria-hidden="true">→</span></button>}
+              {bookingForm.routeId && <button disabled={busy !== "" || !bookingForm.seatNumber || !selectedBus || !seatMap.some(seat => String(seat.seatNumber) === String(bookingForm.seatNumber) && seat.status === "available")} className="min-h-12 w-full rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f] disabled:cursor-not-allowed disabled:opacity-50">{busy === "booking" ? "Reserving seat…" : !selectedBus ? "No buses running on this route right now" : bookingForm.seatNumber ? `4 · Reserve seat ${bookingForm.seatNumber}` : "Choose a seat to continue"}<span className="ml-2" aria-hidden="true">→</span></button>}
             </form>
             {routes.length === 0 && <p className="mt-3 text-xs text-[#8992a8]">No active routes are available right now.</p>}
           </section>
 
-          <section className="rounded-3xl border border-white bg-[#e9ebf8] p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7"><PanelTitle eyebrow="Service notices" title="Route alerts" note="Choose a route to check updates"/><select value={routeId} onChange={(event) => setRouteId(event.target.value)} className="mt-5 min-h-11 w-full rounded-xl border border-white bg-white px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">Select a route</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</select>
+          <section className="rounded-3xl border border-white bg-[#e9ebf8] p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7"><PanelTitle eyebrow="Service notices" title="Route alerts" note={routes.find(r => String(r._id) === String(bookingForm.routeId))?.routeName || "Selected route"}/>
             {routeAlertsState === "loading" && <p className="mt-4 rounded-xl bg-white/70 p-4 text-xs text-[#74809a]">Checking route alerts…</p>}
             {routeAlertsState === "error" && <div role="status" className="mt-4 rounded-xl bg-white/70 p-4 text-xs leading-5 text-[#74809a]">Route alerts could not be loaded.<button type="button" onClick={() => setRouteAlertsRefresh((current) => current + 1)} className="ml-2 font-semibold text-[#536bb7] underline">Try again</button></div>}
-            {routeAlertsState === "ready" && (routeAlerts.length ? <div className="mt-4 space-y-2">{routeAlerts.map((alert) => <article key={alert._id} className="rounded-2xl border border-white bg-white p-4"><p className="text-sm font-semibold text-[#34405d]">{alert.message}</p><p className="mt-2 text-[10px] text-[#8992a8]">Posted {dateLabel(alert.createdAt)}{alert.expiresAt ? ` · until ${dateLabel(alert.expiresAt)}` : ""}</p></article>)}</div> : <p className="mt-4 rounded-xl bg-white/70 p-4 text-xs text-[#74809a]">{routeId ? "No active alerts for this route." : "Select a route to view its latest notices."}</p>)}
+            {routeAlertsState === "ready" && (routeAlerts.length ? <div className="mt-4 space-y-2">{routeAlerts.map((alert) => { const tone = { info: "border-blue-200 bg-blue-50 text-blue-800", delay: "border-amber-200 bg-amber-50 text-amber-800", disruption: "border-rose-200 bg-rose-50 text-rose-800" }[alert.severity] || "border-blue-200 bg-blue-50 text-blue-800"; return <article key={alert._id} className={`rounded-2xl border p-4 ${tone}`}><p className="text-[10px] font-bold uppercase">{alert.severity || "info"}</p><p className="mt-1 text-sm font-semibold">{alert.message}</p><p className="mt-2 text-[10px] opacity-75">Posted {dateLabel(alert.createdAt)}{alert.expiresAt ? ` · until ${dateLabel(alert.expiresAt)}` : ""}</p></article>; })}</div> : <p className="mt-4 rounded-xl bg-white/70 p-4 text-xs text-[#74809a]">No alerts on this route right now</p>)}
           </section>
         </div>}
 

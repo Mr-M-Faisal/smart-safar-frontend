@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { createTransitSocket } from "@/lib/socket";
 import { demoStopsForRoute, FAISALABAD_CENTER, faisalabadDemoCoordinates, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
+import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 
 function makeDemoBuses() {
   return faisalabadDemoRoutes.flatMap((route, routeIndex) => route.buses.map((bus, busIndex) => {
@@ -52,7 +53,7 @@ function RoutePicker({ routes, value, onChange }) {
     <div role="listbox" aria-label="Available routes" className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
       {matches.map((route, index) => {
         const isSelected = String(route._id) === String(value);
-        return <button key={route._id} type="button" role="option" aria-selected={isSelected} onClick={() => onChange(route._id)} className={`group flex min-h-[68px] min-w-0 items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7185c6] ${isSelected ? "border-[#455da8] bg-gradient-to-r from-[#263a70] to-[#536bb7] text-white shadow-[0_8px_20px_rgba(49,68,130,.2)]" : "border-[#e8ebf4] bg-white hover:-translate-y-0.5 hover:border-[#c8d1ed] hover:bg-[#f9faff] hover:shadow-[0_8px_18px_rgba(53,67,112,.08)]"}`}>
+        return <button key={route._id} type="button" role="option" aria-selected={isSelected} onClick={() => onChange(route._id)} className={`group flex min-h-[68px] min-w-0 items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7185c6] motion-reduce:transform-none motion-reduce:transition-none ${isSelected ? "border-[#455da8] bg-gradient-to-r from-[#263a70] to-[#536bb7] text-white shadow-[0_8px_20px_rgba(49,68,130,.2)] hover:brightness-110" : "border-[#e8ebf4] bg-white hover:-translate-y-0.5 hover:border-[#c8d1ed] hover:bg-[#f9faff] hover:shadow-[0_8px_18px_rgba(53,67,112,.08)]"}`}>
           <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-xs font-bold ${isSelected ? "bg-white/15 text-[#a5f1df]" : "bg-[#f0f2fb] text-[#7185c6] group-hover:bg-[#e9edff]"}`}>{String(index + 1).padStart(2, "0")}</span>
           <span className="min-w-0 flex-1"><span className={`block truncate text-xs font-bold ${isSelected ? "text-white" : "text-[#34405d]"}`}>{route.routeName}</span><span className={`mt-1 block truncate text-[10px] ${isSelected ? "text-white/70" : "text-[#8992a8]"}`}>{route.startPoint || "Start"}<span className={`px-1.5 ${isSelected ? "text-[#a5f1df]" : "text-[#20a992]"}`}>→</span>{route.endPoint || "End"}</span></span>
           <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs ${isSelected ? "bg-[#a5f1df] text-[#20345f]" : "bg-[#f4f6fc] text-[#8b97b4] opacity-0 transition group-hover:opacity-100"}`} aria-hidden="true">{isSelected ? "✓" : "→"}</span>
@@ -184,6 +185,12 @@ export default function LiveMapExperience() {
   const mapController = useRef(null);
 
   useEffect(() => {
+    const saved = readBookingSelection();
+    const params = new URLSearchParams(window.location.search);
+    const initialRoute = params.get('route') || saved.routeId;
+    const initialBus = params.get('bus') || saved.busId;
+    if (initialRoute) setRouteId(initialRoute);
+    if (initialBus) setSelectedBusId(initialBus);
     let active = true;
     Promise.all([apiRequest("/routes"), apiRequest("/buses")]).then(([routeResult, busResult]) => {
       if (!active) return;
@@ -191,9 +198,9 @@ export default function LiveMapExperience() {
       if (!liveRoutes.length) return;
       const liveBuses = Array.isArray(busResult) ? busResult : [];
       setRoutes(liveRoutes);
-      setRouteId((current) => liveRoutes.some((route) => route._id === current) ? current : liveRoutes[0]._id);
+      setRouteId((current) => liveRoutes.some((route) => String(route._id) === String(initialRoute || current)) ? (initialRoute || current) : liveRoutes[0]._id);
       setBuses(liveBuses);
-      setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(current)) ? current : liveBuses[0]?._id || null);
+      setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(initialBus || current)) ? (initialBus || current) : liveBuses[0]?._id || null);
       setDataSource("backend");
       setRealtimeStatus("connecting");
     }).catch(() => {});
@@ -260,9 +267,9 @@ export default function LiveMapExperience() {
         direction: update.direction,
       } : bus));
     });
-    socket.on("seatAvailabilityUpdate", (update) => {
+    socket.on("seatStateUpdate", (update) => {
       if (!update?.busId) return;
-      setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.availableSeats, ...(update.capacity != null ? { capacity: update.capacity } : {}) } : bus));
+      setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.available, ...(update.capacity != null ? { capacity: update.capacity } : {}) } : bus));
     });
     socket.connect();
     return () => socket.disconnect();
@@ -284,7 +291,7 @@ export default function LiveMapExperience() {
       <div className="mx-auto w-full max-w-[1440px] min-w-0">
         <RevealOnScroll>
           <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#536bb7]">Faisalabad · transit network</p><h1 className="mt-3 break-words text-3xl font-semibold tracking-[-.04em] text-[#25304f] sm:text-4xl lg:text-5xl">Track buses around the city.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#68738e] sm:text-base">Choose a route to see its stops and buses on the map.</p></div>
-          <RoutePicker routes={routes} value={routeId} onChange={(nextRouteId) => { setRouteId(nextRouteId); setSelectedBusId(null); }} />
+          <RoutePicker routes={routes} value={routeId} onChange={(nextRouteId) => { setRouteId(nextRouteId); setSelectedBusId(null); saveBookingSelection({ routeId: nextRouteId, busId: "" }); }} />
         </RevealOnScroll>
 
         <div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
@@ -295,7 +302,7 @@ export default function LiveMapExperience() {
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(310px,.85fr)]">
           <section className="min-w-0 rounded-[1.75rem] border border-white bg-white p-2.5 shadow-[0_16px_42px_rgba(53,67,112,.1)] sm:p-3" aria-label="Bus map">
             <div className="relative h-[42svh] min-h-[280px] max-h-[430px] w-full min-w-0 overflow-hidden rounded-[1.4rem] bg-[#e6e9f4] sm:h-[48svh] sm:min-h-[340px] sm:max-h-[520px] lg:h-[60vh] lg:min-h-[420px] lg:max-h-[650px]">
-              <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={setSelectedBusId} mapController={mapController}/>
+              <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={(id) => { setSelectedBusId(id); saveBookingSelection({ routeId, busId: id }); }} mapController={mapController}/>
               <button onClick={locateMe} className="absolute left-3 top-3 z-[500] inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/80 bg-white/95 px-3.5 text-xs font-semibold text-[#465a9c] shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" aria-label="Show my current location"><span aria-hidden="true">◎</span><span className="hidden sm:inline">My location</span></button>
               <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap gap-2 rounded-xl border border-white/80 bg-white/95 px-3 py-2 text-[10px] font-semibold text-[#596681] shadow-md backdrop-blur"><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#20bba5]"/>Bus</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#7185c6]"/>Stop</span></div>
             </div>

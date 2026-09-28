@@ -32,9 +32,10 @@ export default function LoginPage() {
     }
     saveSessionToken(result.token, result.role);
     const params = new URLSearchParams(window.location.search);
-    const requestedBookingRoute = params.get("bookingRoute");
-    const requestedBookingSeat = params.get("bookingSeat");
-    const commuterDestination = requestedBookingRoute ? `/passenger?routeId=${encodeURIComponent(requestedBookingRoute)}${requestedBookingSeat ? `&seatNumber=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
+    const requestedBookingRoute = params.get("bookingRoute") || params.get("route");
+    const requestedBookingBus = params.get("bookingBus") || params.get("bus");
+    const requestedBookingSeat = params.get("bookingSeat") || params.get("seat");
+    const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
     router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : commuterDestination);
   }, [router]);
 
