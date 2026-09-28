@@ -30,13 +30,15 @@ export default function LoginPage() {
       setError("The server returned an invalid account response. Please try again.");
       return;
     }
-    saveSessionToken(result.token, result.role);
+    saveSessionToken(result.token, result.role, result.refreshToken);
     const params = new URLSearchParams(window.location.search);
     const requestedBookingRoute = params.get("bookingRoute") || params.get("route");
     const requestedBookingBus = params.get("bookingBus") || params.get("bus");
     const requestedBookingSeat = params.get("bookingSeat") || params.get("seat");
+    const requestedReturnTo = params.get("returnTo");
     const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
-    router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : commuterDestination);
+    const safeReturnTo = requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//") && !requestedReturnTo.startsWith("/login") ? requestedReturnTo : null;
+    router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : safeReturnTo || commuterDestination);
   }, [router]);
 
   const handleGoogleCredential = useCallback(async (credential) => {

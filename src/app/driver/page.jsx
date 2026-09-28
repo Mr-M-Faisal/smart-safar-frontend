@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { io } from "socket.io-client";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, readSessionToken } from "@/lib/session";
+import { clearSessionToken, readSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 
 const backendOrigin = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -44,10 +44,18 @@ export default function DriverHomePage() {
   const [locationsMessage, setLocationsMessage] = useState("");
   const [locationRefresh, setLocationRefresh] = useState(0);
   const [seatBusy, setSeatBusy] = useState(false);
+  const [seatError, setSeatError] = useState(null);
   const [seatState, setSeatState] = useState({ seats: [], occupied: 0, capacity: 0 });
   const [shiftClock, setShiftClock] = useState(Date.now());
   const [lastShiftEndedAt, setLastShiftEndedAt] = useState(null);
   const activeShift = profile?.activeShift;
+  const authState = pageState === "ready" ? "authenticated" : ["signed-out", "expired", "denied"].includes(pageState) ? "unauthenticated" : "loading";
+
+  useEffect(() => {
+    const handleExpired = (event) => { if (event.detail?.role === "driver") { setToken(null); setProfile(null); setBus(null); setPageState("expired"); } };
+    window.addEventListener("smart-safar:auth-expired", handleExpired);
+    return () => window.removeEventListener("smart-safar:auth-expired", handleExpired);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setShiftClock(Date.now()), 1000);
@@ -101,7 +109,7 @@ export default function DriverHomePage() {
         setPageState("expired");
       } else {
         setPageState("error");
-        setPageMessage(error.message || "Your driver profile could not be loaded.");
+        setPageMessage(`${error.message || "Your driver profile could not be loaded."}${error.code ? ` (${error.code})` : ""}${error.requestId ? ` · Request ${error.requestId}` : ""}`);
       }
     });
     return () => { active = false; };
@@ -133,7 +141,8 @@ export default function DriverHomePage() {
 
   const loadDriverSeats = useCallback(async () => {
     if (!token || !activeShift) return;
-    try { setSeatState(await apiRequest("/buses/assigned/seats", { token })); } catch { /* retain current map while reconnecting */ }
+    try { setSeatState(await apiRequest("/buses/assigned/seats", { token })); setSeatError(null); }
+    catch (error) { setSeatError(error); }
   }, [token, activeShift]);
 
   async function seatAction(seatNumber, action) {
@@ -142,14 +151,14 @@ export default function DriverHomePage() {
     try {
       await apiRequest(action === "walk-in" ? "/buses/assigned/seats/walk-in" : `/buses/assigned/seats/${encodeURIComponent(seatNumber)}`, { method: action === "walk-in" ? "POST" : "PATCH", token, ...(action === "walk-in" ? {} : { body: JSON.stringify({ action }) }) });
       await loadDriverSeats();
-    } catch (error) { setPageMessage(error.message || "Could not update that seat."); }
+    } catch (error) { setPageMessage(`${error.message || "Could not update that seat."}${error.code ? ` (${error.code})` : ""}`); }
     finally {
       setSeatBusy(false);
     }
   }
 
   function signOut() {
-    clearSessionToken("driver");
+    void revokeAndClearSession("driver");
     setToken(null);
     setProfile(null);
     setBus(null);
@@ -240,7 +249,7 @@ export default function DriverHomePage() {
           {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" onSignOut={signOut} />}
         </div>
 
-        {pageState === "loading" && <div className="mt-8 rounded-3xl border border-white bg-white p-6 text-sm text-[#68738e] shadow-sm" role="status">Loading your driver profile…</div>}
+        {authState === "loading" && pageState !== "error" && <div className="mt-8 rounded-3xl border border-white bg-white p-6 text-sm text-[#68738e] shadow-sm" role="status">Loading your driver profile…</div>}
         {["signed-out", "expired", "denied"].includes(pageState) && <section className="mt-8 rounded-3xl border border-[#dfe3f1] bg-white p-6 shadow-[0_12px_36px_rgba(53,67,112,.08)] sm:p-8"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#e9edff] text-xl text-[#536bb7]" aria-hidden="true">↗</span><h2 className="mt-5 text-xl font-semibold text-[#293553]">{pageState === "denied" ? "Driver access only" : pageState === "expired" ? "Your session expired" : "Sign in to manage your shift"}</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[#74809a]">{pageState === "denied" ? "This account is not a driver account. Sign in with the driver credentials assigned by your administrator." : "Sign in with the email and password provided for your driver account. Your assigned bus and active shift will load automatically."}</p><Link href="/login" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#43599f]">Driver sign in <span className="ml-2" aria-hidden="true">→</span></Link></section>}
 
         {pageState === "error" && <section className="mt-8 rounded-3xl border border-[#f1c9c2] bg-[#fff8f6] p-6 sm:p-8"><h2 className="text-lg font-semibold text-[#7b433b]">Could not load your profile</h2><p className="mt-2 text-sm leading-6 text-[#9a6258]">{pageMessage}</p><button onClick={() => setRefreshKey((key) => key + 1)} className="mt-5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#536bb7] shadow-sm">Try again</button></section>}
@@ -253,7 +262,7 @@ export default function DriverHomePage() {
               {hasBusAssignment && <div className="mt-6 grid gap-3 sm:grid-cols-2"><InfoCard label="Route" value={route?.routeName || "Not available"}/><InfoCard label="Direction" value={activeShift?.bus?.direction || bus?.direction || "Ready to start"}/><InfoCard label="Available seats" value={bus?.availableSeats != null ? `${bus.availableSeats}${bus.capacity != null ? ` / ${bus.capacity}` : ""}` : "—"}/><InfoCard label="Bus status" value={bus?.status || activeShift?.bus?.status || "—"}/></div>}
               {activeShift && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-r from-white to-[#f0f3ff] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Shift timer</p><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-medium text-[#74809a]">Started {timeLabel(activeShift.startedAt)}</p><p className="mt-1 font-mono text-2xl font-bold tracking-tight text-[#405ba7]">{elapsedLabel(activeShift.startedAt, shiftClock)}</p></div><span className="rounded-full bg-[#e0f7ef] px-2.5 py-1 text-[10px] font-semibold capitalize text-[#167b6e]">{activeShift.startDirection || "outbound"} journey · running</span></div></div>}
               {!activeShift && lastShiftEndedAt && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-[#f7f8fc] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Last shift ended</p><p className="mt-1 text-sm font-semibold text-[#34405d]">{timeLabel(lastShiftEndedAt)}</p></div>}
-              {activeShift && <section className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-br from-[#f5f7ff] to-white p-4 sm:p-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#7181ad]">Live seat map</p><p className="mt-1 text-xl font-bold text-[#293553]">{seatState.occupied || 0} / {seatState.capacity || bus?.capacity || 0} occupied</p></div><button type="button" disabled={seatBusy} onClick={() => seatAction(null,"walk-in")} className="min-h-12 rounded-xl bg-gradient-to-r from-[#263a70] to-[#536bb7] px-5 text-sm font-bold text-white shadow-md disabled:opacity-50">+ Walk-in</button></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{(seatState.seats || []).map(seat => <article key={seat.seatNumber} className={`rounded-xl border p-2 text-center text-xs ${seat.status === "available" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : seat.status === "reserved" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}><strong>{seat.seatNumber}</strong><span className="mt-1 block text-[9px] capitalize">{seat.status}</span>{seat.passengerName && <span className="block truncate text-[9px]">{seat.passengerName}{seat.shareLocation ? " · 📍" : ""}</span>}{seat.status === "reserved" ? <div className="mt-2 flex justify-center gap-1"><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"board")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">Mark boarded</button><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"no_show")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">No-show</button></div> : <button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,seat.status === "occupied" ? "release" : "occupy")} className="mt-2 rounded bg-white px-2 py-1 text-[9px] font-semibold">{seat.status === "occupied" ? "Passenger got off" : "Mark occupied"}</button>}</article>)}</div><p className="mt-2 text-[10px] text-[#8992a8]">Available · Reserved · Occupied. All seat totals are calculated from the seat map.</p></section>}
+              {activeShift && <section className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-br from-[#f5f7ff] to-white p-4 sm:p-5">{seatError && <div role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">Seat map could not load{seatError.code ? ` (${seatError.code})` : ""}: {seatError.message} <button type="button" onClick={() => loadDriverSeats()} className="ml-2 font-bold underline">Retry</button></div>}<div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#7181ad]">Live seat map</p><p className="mt-1 text-xl font-bold text-[#293553]">{seatState.occupied || 0} / {seatState.capacity || bus?.capacity || 0} occupied</p></div><button type="button" disabled={seatBusy} onClick={() => seatAction(null,"walk-in")} className="min-h-12 rounded-xl bg-gradient-to-r from-[#263a70] to-[#536bb7] px-5 text-sm font-bold text-white shadow-md disabled:opacity-50">+ Walk-in</button></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{(seatState.seats || []).map(seat => <article key={seat.seatNumber} className={`rounded-xl border p-2 text-center text-xs ${seat.status === "available" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : seat.status === "reserved" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}><strong>{seat.seatNumber}</strong><span className="mt-1 block text-[9px] capitalize">{seat.status}</span>{seat.passengerName && <span className="block truncate text-[9px]">{seat.passengerName}{seat.shareLocation ? " · 📍" : ""}</span>}{seat.status === "reserved" ? <div className="mt-2 flex justify-center gap-1"><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"board")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">Mark boarded</button><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"no_show")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">No-show</button></div> : <button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,seat.status === "occupied" ? "release" : "occupy")} className="mt-2 rounded bg-white px-2 py-1 text-[9px] font-semibold">{seat.status === "occupied" ? "Passenger got off" : "Mark occupied"}</button>}</article>)}</div><p className="mt-2 text-[10px] text-[#8992a8]">Available · Reserved · Occupied. All seat totals are calculated from the seat map.</p></section>}
             </section>
 
             <section className="driver-glass rounded-[1.75rem] border border-white/70 p-5 shadow-[0_18px_48px_rgba(35,49,87,.13)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(35,49,87,.19)] sm:p-7">

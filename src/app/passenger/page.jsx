@@ -12,6 +12,8 @@ import { createTransitSocket } from "@/lib/socket";
 import PublicLayout from "@/components/layout/PublicLayout";
 import BookingConfirmationModal from "@/components/booking/BookingConfirmationModal";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
+import busListState from "@/lib/busListState.cjs";
+const { getBusListViewState } = busListState;
 
 function getLocation() {
   return new Promise((resolve, reject) => {
@@ -43,6 +45,7 @@ function PassengerDashboard() {
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
   const [sessionState, setSessionState] = useState("loading");
+  const authState = sessionState === "ready" ? "authenticated" : ["signed-out", "expired", "denied"].includes(sessionState) ? "unauthenticated" : "loading";
   const [routes, setRoutes] = useState([]);
   const [buses, setBuses] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -52,6 +55,9 @@ function PassengerDashboard() {
   const [routeAlertsRefresh, setRouteAlertsRefresh] = useState(0);
   const [bookingForm, setBookingForm] = useState({ routeId: "", busId: "", seatNumber: "", paymentMethod: "cash", shareLocation: false });
   const [activeRouteBuses, setActiveRouteBuses] = useState([]);
+  const [activeRouteBusesState, setActiveRouteBusesState] = useState("idle");
+  const [activeRouteBusesError, setActiveRouteBusesError] = useState(null);
+  const [routeBusesReload, setRouteBusesReload] = useState(0);
   const [seatMap, setSeatMap] = useState([]);
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [safetyBusId, setSafetyBusId] = useState("");
@@ -63,6 +69,11 @@ function PassengerDashboard() {
   const [activeTab, setActiveTab] = useState("book");
   const [bookingConfirmation, setBookingConfirmation] = useState(null);
   useEffect(() => {
+    const handleExpired = (event) => { if (event.detail?.role === "commuter") { setToken(null); setProfile(null); setSessionState("expired"); } };
+    window.addEventListener("smart-safar:auth-expired", handleExpired);
+    return () => window.removeEventListener("smart-safar:auth-expired", handleExpired);
+  }, []);
+  useEffect(() => {
     const syncTabFromHash = () => { const hash = window.location.hash.slice(1); setActiveTab(["history", "security", "report"].includes(hash) ? hash : "book"); };
     syncTabFromHash();
     window.addEventListener("hashchange", syncTabFromHash);
@@ -71,6 +82,7 @@ function PassengerDashboard() {
   const selectedRouteBuses = activeRouteBuses;
   const selectedBus = selectedRouteBuses.find((bus) => String(bus._id) === String(bookingForm.busId)) || null;
   const freeSeatsOnRoute = Number(selectedBus?.availableSeats) || 0;
+  const activeBusesView = getBusListViewState({ loading: activeRouteBusesState === "loading", error: activeRouteBusesState === "error" ? activeRouteBusesError : null, buses: selectedRouteBuses });
 
   useEffect(() => {
     const busIds = buses.map((bus) => bus._id).filter(Boolean);
@@ -90,24 +102,31 @@ function PassengerDashboard() {
   useEffect(() => {
     if (sessionState !== "ready" || !token || !bookingForm.routeId || activeTab !== "book") return undefined;
     let active = true;
+    setActiveRouteBuses([]);
+    setActiveRouteBusesError(null);
+    setActiveRouteBusesState("loading");
     const refreshRouteBuses = async () => {
       try {
         const result = await apiRequest(`/buses/route/${encodeURIComponent(bookingForm.routeId)}/active`, { token });
         if (!active || !Array.isArray(result)) return;
         setActiveRouteBuses(result);
+        setActiveRouteBusesError(null);
+        setActiveRouteBusesState("ready");
         setBookingForm(current => {
           const savedBus = current.busId && result.some(bus => String(bus._id) === String(current.busId)) ? current.busId : result.length === 1 ? result[0]._id : "";
           if (savedBus !== current.busId) saveBookingSelection({ routeId: current.routeId, busId: savedBus });
           return { ...current, busId: savedBus };
         });
-      } catch {
-        // Preserve the last known availability if a refresh is temporarily unavailable.
+      } catch (error) {
+        if (!active) return;
+        setActiveRouteBusesError(error);
+        setActiveRouteBusesState("error");
       }
     };
     refreshRouteBuses();
     const timer = window.setInterval(refreshRouteBuses, 5000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [activeTab, bookingForm.routeId, sessionState, token]);
+  }, [activeTab, bookingForm.routeId, sessionState, token, routeBusesReload]);
 
   useEffect(() => {
     if (!token || !bookingForm.busId || activeTab !== "book") { setSeatMap([]); return undefined; }
@@ -199,7 +218,8 @@ function PassengerDashboard() {
       if (error.status === 401) { clearSessionToken("commuter"); setToken(null); setProfile(null); setSessionState("expired"); }
       if (error.status === 409 && /seat/i.test(error.message || "")) setRefreshKey(key => key + 1);
       const readinessError = /No active assigned bus is currently available|does not have a valid active driver shift/i.test(error.message || "");
-      setNotice({ type: "error", text: readinessError ? "A bus and driver may be assigned, but the server cannot confirm an active driver shift. Ask the driver to start their shift, then check availability again." : error.message || "That action could not be completed. Please try again." });
+      const seatRace = error.status === 409 && /seat/i.test(error.message || "");
+      setNotice({ type: "error", text: seatRace ? "That seat was just taken, please pick another." : readinessError ? "A bus and driver may be assigned, but the server cannot confirm an active driver shift. Ask the driver to start their shift, then check availability again." : `${error.message || "That action could not be completed. Please try again."}${error.code ? ` (${error.code})` : ""}${error.requestId ? ` · Request ${error.requestId}` : ""}` });
       return false;
     } finally { setBusy(""); }
   }
@@ -288,7 +308,7 @@ function PassengerDashboard() {
     const signInHref = requestedRouteId ? `/login?bookingRoute=${encodeURIComponent(requestedRouteId)}${requestedSeatNumber ? `&bookingSeat=${encodeURIComponent(requestedSeatNumber)}` : ""}` : "/login";
     return <main className="min-h-[70vh] bg-[#f4f5fb] px-4 py-10"><section className="mx-auto max-w-2xl rounded-3xl border border-white bg-white p-7 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Passenger account</p><h1 className="mt-3 text-2xl font-semibold text-[#293553]">Passenger account needed</h1><p className="mt-2 text-sm leading-6 text-[#74809a]">This browser is signed in to another workspace. Sign in with a passenger account to book and manage rides. Your other workspace will stay signed in.</p><Link href={signInHref} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-[#536bb7] px-5 py-3 text-sm font-semibold text-white">Switch to passenger sign in →</Link><Link href="/routes" className="ml-3 inline-flex min-h-11 items-center rounded-xl border border-[#dfe3f1] px-5 py-3 text-sm font-semibold text-[#53617e]">Browse routes</Link></section></main>;
   }
-  if (sessionState === "loading") return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 text-sm text-[#68738e]">Loading your passenger account…</div></main>;
+  if (authState === "loading" && sessionState !== "error") return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><div className="mx-auto max-w-5xl rounded-3xl bg-white p-6 text-sm text-[#68738e]">Loading your passenger account…</div></main>;
   if (sessionState === "error") return <main className="min-h-[70vh] bg-[#f4f5fb] p-6"><div className="mx-auto max-w-5xl rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">{notice?.text || "Could not load your passenger account."}<button onClick={() => setRefreshKey((key) => key + 1)} className="ml-3 font-semibold underline">Try again</button></div></main>;
 
   return (
@@ -306,10 +326,10 @@ function PassengerDashboard() {
         {activeTab === "book" && <div role="tabpanel" id="passenger-panel-book" aria-labelledby="passenger-tab-book" className="mt-5 grid items-start gap-5 xl:grid-cols-[1.1fr_.9fr]">
           <section id="booking" className="scroll-mt-24 rounded-3xl border border-white bg-white p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7"><PanelTitle eyebrow="Simple 3-step booking" title="Reserve your seat" note={`${routes.length} routes`}/><p className="mt-2 text-xs leading-5 text-[#7b859c]">Choose a route, pick a seat number, then confirm. Seats appear when an assigned driver has started a shift; availability refreshes while this screen is open.</p>
             <form onSubmit={bookRide} className="mt-5 space-y-5">{bookingForm.routeId && !showRoutePicker ? <div className="rounded-2xl border border-[#e4e8f5] bg-[#f8f9fd] p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-[#74809a]">Selected route</p><div className="mt-1 flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-[#34405d]">{routes.find(r => String(r._id) === String(bookingForm.routeId))?.routeName || "Route"}</p><p className="mt-1 text-xs text-[#74809a]">{routes.find(r => String(r._id) === String(bookingForm.routeId))?.startPoint} → {routes.find(r => String(r._id) === String(bookingForm.routeId))?.endPoint}</p></div><button type="button" onClick={() => setShowRoutePicker(true)} className="text-xs font-semibold text-[#536bb7] underline">Change route</button></div></div> : <label className="block"><span className="text-xs font-semibold text-[#596681]">1 · Choose your route</span><select required value={bookingForm.routeId} onChange={(event) => { const routeId = event.target.value; setBookingForm({ ...bookingForm, routeId, busId: "", seatNumber: "" }); saveBookingSelection({ routeId, busId: "" }); setShowRoutePicker(false); }} className="mt-1.5 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-[#fbfcff] px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">Select a route</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName} · {route.startPoint} to {route.endPoint}</option>)}</select></label>}
-              {bookingForm.routeId && <div className="rounded-2xl bg-[#f7f8fc] p-4"><p className="text-xs font-semibold text-[#596681]">2 · Choose an active bus</p>{selectedRouteBuses.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{selectedRouteBuses.map(bus => <button type="button" key={bus._id} onClick={() => { setBookingForm({...bookingForm,busId:bus._id,seatNumber:""}); saveBookingSelection({routeId:bookingForm.routeId,busId:bus._id}); }} aria-pressed={String(bus._id)===String(bookingForm.busId)} className={`rounded-xl border p-3 text-left text-xs ${String(bus._id)===String(bookingForm.busId)?"border-[#536bb7] bg-[#eef1fc]":"border-[#e3e7f1] bg-white"}`}><strong>{bus.busNumber || `Bus ${bus._id.slice(-5)}`}</strong><span className="mt-1 block text-[#74809a]">{bus.availableSeats} free seats{bus.etaMinutes != null ? ` · ETA ${Math.round(bus.etaMinutes)} min` : ""}</span></button>)}</div> : <p className="mt-2 rounded-xl bg-white p-3 text-xs text-[#74809a]">No buses running on this route right now</p>}{selectedBus && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#596681]">3 · Choose an available seat</p><SeatPicker capacity={selectedBus.capacity} seats={seatMap} value={bookingForm.seatNumber} onChange={(seatNumber) => setBookingForm({ ...bookingForm, seatNumber })}/></div>}</div>}
+              {bookingForm.routeId && <div className="rounded-2xl bg-[#f7f8fc] p-4"><p className="text-xs font-semibold text-[#596681]">2 · Choose an active bus</p>{activeBusesView === "error" ? <div role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700"><p>Could not load buses for this route{activeRouteBusesError?.code ? ` (${activeRouteBusesError.code})` : ""}. {activeRouteBusesError?.message || "Check your connection and retry."}</p><button type="button" onClick={() => setRouteBusesReload(value => value + 1)} className="mt-2 rounded-lg bg-white px-3 py-2 font-semibold text-rose-700">Retry</button></div> : activeBusesView === "loading" ? <p className="mt-2 rounded-xl bg-white p-3 text-xs text-[#74809a]">Loading operating buses…</p> : activeBusesView === "ready" ? <div className="mt-2 grid gap-2 sm:grid-cols-2">{selectedRouteBuses.map(bus => <button type="button" key={bus._id} onClick={() => { setBookingForm({...bookingForm,busId:bus._id,seatNumber:""}); saveBookingSelection({routeId:bookingForm.routeId,busId:bus._id}); }} aria-pressed={String(bus._id)===String(bookingForm.busId)} className={`rounded-xl border p-3 text-left text-xs ${String(bus._id)===String(bookingForm.busId)?"border-[#536bb7] bg-[#eef1fc]":"border-[#e3e7f1] bg-white"}`}><strong>{bus.busNumber || `Bus ${bus._id.slice(-5)}`}</strong><span className="mt-1 block text-[#74809a]">{bus.availableSeats} free seats{bus.etaMinutes != null ? ` · ETA ${Math.round(bus.etaMinutes)} min` : ""}</span></button>)}</div> : <p className="mt-2 rounded-xl bg-white p-3 text-xs text-[#74809a]">No buses running on this route right now</p>}{selectedBus && <div className="mt-4"><p className="mb-2 text-xs font-semibold text-[#596681]">3 · Choose an available seat</p><SeatPicker capacity={selectedBus.capacity} seats={seatMap} value={bookingForm.seatNumber} onChange={(seatNumber) => setBookingForm({ ...bookingForm, seatNumber })}/></div>}</div>}
               {bookingForm.routeId && <PaymentOptions value={bookingForm.paymentMethod} onChange={(paymentMethod) => setBookingForm({ ...bookingForm, paymentMethod })}/>}
               <label className="flex items-start gap-3 rounded-xl bg-[#f6f7fb] p-3.5"><input type="checkbox" checked={bookingForm.shareLocation} onChange={(event) => setBookingForm({ ...bookingForm, shareLocation: event.target.checked })} className="mt-0.5 h-4 w-4 accent-[#536bb7]"/><span className="text-xs leading-5 text-[#596681]"><strong className="font-semibold text-[#34405d]">Share pickup location with my driver</strong><span className="mt-0.5 block text-[#8992a8]">Optional. Your browser will ask for location access, and sharing is only sent for this confirmed booking.</span></span></label>
-              {bookingForm.routeId && <button disabled={busy !== "" || !bookingForm.seatNumber || !selectedBus || !seatMap.some(seat => String(seat.seatNumber) === String(bookingForm.seatNumber) && seat.status === "available")} className="min-h-12 w-full rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f] disabled:cursor-not-allowed disabled:opacity-50">{busy === "booking" ? "Reserving seat…" : !selectedBus ? "No buses running on this route right now" : bookingForm.seatNumber ? `4 · Reserve seat ${bookingForm.seatNumber}` : "Choose a seat to continue"}<span className="ml-2" aria-hidden="true">→</span></button>}
+              {bookingForm.routeId && <button disabled={busy !== "" || !bookingForm.seatNumber || !selectedBus || !seatMap.some(seat => String(seat.seatNumber) === String(bookingForm.seatNumber) && seat.status === "available")} className="min-h-12 w-full rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f] disabled:cursor-not-allowed disabled:opacity-50">{busy === "booking" ? "Reserving seat…" : activeRouteBusesState === "loading" ? "Loading buses…" : activeRouteBusesState === "error" ? "Retry bus list above" : !selectedBus ? "No buses running on this route right now" : bookingForm.seatNumber ? `4 · Reserve seat ${bookingForm.seatNumber}` : "Choose a seat to continue"}<span className="ml-2" aria-hidden="true">→</span></button>}
             </form>
             {routes.length === 0 && <p className="mt-3 text-xs text-[#8992a8]">No active routes are available right now.</p>}
           </section>

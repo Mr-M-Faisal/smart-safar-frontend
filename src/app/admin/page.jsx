@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, readSessionToken } from "@/lib/session";
+import { clearSessionToken, readSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 
 const initialData = { overview: null, buses: [], routes: [], drivers: [], shifts: [], adminBookings: [], reportItems: [], stopsByRoute: {}, alertsByRoute: {} };
@@ -41,6 +41,7 @@ export default function AdminHomePage() {
   const [token, setToken] = useState(null);
   const [admin, setAdmin] = useState(null);
   const [sessionState, setSessionState] = useState("loading");
+  const authState = sessionState === "ready" ? "authenticated" : ["signed-out", "expired", "denied"].includes(sessionState) ? "unauthenticated" : "loading";
   const [data, setData] = useState(initialData);
   const [dataErrors, setDataErrors] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -94,6 +95,11 @@ export default function AdminHomePage() {
     loadedTabsRef.current.add(tab);
     setLoadingTab("");
     setSessionState("ready");
+  }, []);
+  useEffect(() => {
+    const handleExpired = (event) => { if (event.detail?.role === "admin") { setToken(null); setAdmin(null); setSessionState("expired"); } };
+    window.addEventListener("smart-safar:auth-expired", handleExpired);
+    return () => window.removeEventListener("smart-safar:auth-expired", handleExpired);
   }, []);
   useEffect(() => {
     let active = true;
@@ -150,6 +156,20 @@ export default function AdminHomePage() {
     loadRouteDetails();
     return () => { active = false; };
   }, [activeTab, sessionState, token, data.routes, data.stopsByRoute, data.alertsByRoute]);
+  useEffect(() => {
+    if (sessionState !== "ready" || activeTab !== "routes" || !token) return undefined;
+    let active = true;
+    const pollOperatingState = async () => {
+      try {
+        const [buses, shifts] = await Promise.all([apiRequest("/buses", { token }), apiRequest("/admin/shifts", { token })]);
+        if (active) setData(current => ({ ...current, buses, shifts }));
+      } catch (error) {
+        if (active) setDataErrors(current => [...current.filter(item => item.key !== "live operating state"), { key: "live operating state", message: error.message }]);
+      }
+    };
+    const timer = window.setInterval(pollOperatingState, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [activeTab, sessionState, token]);
   async function mutate(action, successText) {
     if (!token || busy) return false;
     setBusy(true); setNotice(null);
@@ -248,7 +268,7 @@ export default function AdminHomePage() {
     if (saved) setStopForm((current) => ({ ...current, stopName: "", latitude: "", longitude: "", stopOrder: String(Number(current.stopOrder) + 1) }));
   }
 
-  function signOut() { clearSessionToken("admin"); setToken(null); setAdmin(null); setSessionState("signed-out"); setData(initialData); }
+  function signOut() { void revokeAndClearSession("admin"); setToken(null); setAdmin(null); setSessionState("signed-out"); setData(initialData); }
 
   const activeShifts = useMemo(() => data.shifts.filter((shift) => shift.status === "active"), [data.shifts]);
 
@@ -256,7 +276,7 @@ export default function AdminHomePage() {
     const denied = sessionState === "denied";
     return <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm"><span className="text-xs font-bold uppercase tracking-[.18em] text-transit-700">Administrator access</span><h2 className="mt-3 text-xl font-semibold text-ink">{denied ? "Admin access only" : sessionState === "expired" ? "Your session expired" : "Sign in to open the fleet dashboard"}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{denied ? "This account is not an administrator. Sign in using the admin credentials provisioned for your project." : "Authenticate with an administrator account to view and manage fleet data."}</p><Link href="/login" className="mt-5 inline-flex rounded-xl bg-transit-700 px-4 py-2.5 text-sm font-semibold text-white">Administrator sign in →</Link></section>;
   }
-  if (sessionState === "loading") return <div className="rounded-3xl border border-slate-200 bg-white p-7 text-sm text-slate-500" role="status">Loading secure fleet data…</div>;
+  if (authState === "loading" && sessionState !== "error") return <div className="rounded-3xl border border-slate-200 bg-white p-7 text-sm text-slate-500" role="status">Loading secure fleet data…</div>;
   if (sessionState === "error") return <div className="rounded-3xl border border-rose-200 bg-rose-50 p-7 text-sm text-rose-800">{notice?.text || "The administrator profile could not be loaded."}<button onClick={() => setRefreshKey((key) => key + 1)} className="ml-4 rounded-lg bg-white px-3 py-1.5 font-semibold text-indigo-700">Retry</button></div>;
 
   return (
@@ -287,7 +307,7 @@ export default function AdminHomePage() {
         <div id="driver-create-panel" hidden={activeTab !== "drivers"} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><SectionTitle eyebrow="Team management" title="Create a driver account"/><p className="mt-2 text-xs leading-5 text-slate-500">New drivers can sign in at the driver portal. Assign a bus after creating the account.</p>
           <form onSubmit={createDriver} className="mt-5 space-y-3"><Field label="Full name" required minLength={2} value={driverForm.name} onChange={(event) => setDriverForm({ ...driverForm, name: event.target.value })} placeholder="Driver name"/><Field label="Email address" required type="email" value={driverForm.email} onChange={(event) => setDriverForm({ ...driverForm, email: event.target.value })} placeholder="driver@example.com"/><div className="grid gap-3 sm:grid-cols-2"><Field label="Phone (optional)" value={driverForm.phone} onChange={(event) => setDriverForm({ ...driverForm, phone: event.target.value })} placeholder="0300 0000000"/><Field label="Temporary password" required minLength={6} type="password" autoComplete="new-password" value={driverForm.password} onChange={(event) => setDriverForm({ ...driverForm, password: event.target.value })} placeholder="At least 6 characters"/></div><button disabled={busy} className="min-h-10 rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50">{busy ? "Saving…" : "Create driver"}</button></form>
         </div>
-        <section id="driver-directory-panel" hidden={activeTab !== "drivers"} className="rounded-3xl border border-[#dfe4f3] bg-gradient-to-br from-white via-[#f7f8ff] to-[#eef2ff] p-5 shadow-[0_12px_30px_rgba(53,67,112,.08)] sm:p-7"><SectionTitle eyebrow="Team management" title="Driver directory" action={<span className="rounded-full bg-[#e9edff] px-3 py-1 text-[10px] font-bold text-[#536bb7]">{data.drivers.length} drivers</span>}/><p className="mt-2 text-xs leading-5 text-slate-500">See which drivers are on shift or idle, and check their assigned buses.</p><div className="mt-5 space-y-3">{data.drivers.map((driver) => <article key={driver._id} className="grid gap-3 rounded-2xl border border-white bg-white/85 p-4 shadow-sm sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[#34405d]">{driver.name}</p><p className="mt-1 truncate text-xs text-[#7d88a1]">{driver.email}{driver.phone ? ` · ${driver.phone}` : ""}</p></div><div className="flex flex-wrap items-center gap-2"><span className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-semibold ${driver.assignedBus ? "bg-[#e4f8f0] text-[#16866f]" : "bg-[#fff0e5] text-[#c36a30]"}`}>{driver.assignedBus ? `Assigned · ${(data.buses.find((bus) => String(bus._id) === String(idOf(driver.assignedBus)) )?.busNumber || "Assigned")}` : "No bus assigned"}</span><span className={`rounded-full px-3 py-1.5 text-[10px] font-semibold ${data.shifts.some((shift) => String(idOf(shift.driver)) === String(driver._id) && shift.status === "active") ? "bg-[#e4f8f0] text-[#16866f]" : "bg-slate-100 text-slate-600"}`}>{data.shifts.some((shift) => String(idOf(shift.driver)) === String(driver._id) && shift.status === "active") ? "On shift" : "Idle"}</span><button type="button" disabled={busy} onClick={async () => { if (!window.confirm(`Remove driver account for ${driver.name}?`)) return; await mutate(() => apiRequest(`/admin/drivers/${encodeURIComponent(driver._id)}`, { method: "DELETE", token }), "Driver account removed."); }} className="rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-semibold text-rose-700">Remove</button></div></article>)}{data.drivers.length === 0 && <p className="rounded-xl bg-white/80 p-4 text-xs text-slate-500">No driver accounts found. Create one using the form.</p>}</div></section>
+        <section id="driver-directory-panel" hidden={activeTab !== "drivers"} className="rounded-3xl border border-[#dfe4f3] bg-gradient-to-br from-white via-[#f7f8ff] to-[#eef2ff] p-5 shadow-[0_12px_30px_rgba(53,67,112,.08)] sm:p-7"><SectionTitle eyebrow="Team management" title="Driver directory" action={<span className="rounded-full bg-[#e9edff] px-3 py-1 text-[10px] font-bold text-[#536bb7]">{data.drivers.length} drivers</span>}/><p className="mt-2 text-xs leading-5 text-slate-500">See which drivers are on shift or idle, and check their assigned buses.</p><div className="mt-5 space-y-3">{data.drivers.map((driver) => <article key={driver._id} className="grid gap-3 rounded-2xl border border-white bg-white/85 p-4 shadow-sm sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[#34405d]">{driver.name}</p><p className="mt-1 truncate text-xs text-[#7d88a1]">{driver.email}{driver.phone ? ` · ${driver.phone}` : ""}</p></div><div className="flex flex-wrap items-center gap-2"><span className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-semibold ${driver.assignedBus ? "bg-[#e4f8f0] text-[#16866f]" : "bg-[#fff0e5] text-[#c36a30]"}`}>{driver.assignedBus ? `Assigned · ${(data.buses.find((bus) => String(bus._id) === String(idOf(driver.assignedBus)) )?.busNumber || "Assigned")}` : "No bus assigned"}</span><span className={`rounded-full px-3 py-1.5 text-[10px] font-semibold ${data.buses.some((bus) => bus.operating === true && String(idOf(bus.driver)) === String(driver._id)) ? "bg-[#e4f8f0] text-[#16866f]" : "bg-slate-100 text-slate-600"}`}>{data.buses.some((bus) => bus.operating === true && String(idOf(bus.driver)) === String(driver._id)) ? "On shift" : "Idle"}</span><button type="button" disabled={busy} onClick={async () => { if (!window.confirm(`Remove driver account for ${driver.name}?`)) return; await mutate(() => apiRequest(`/admin/drivers/${encodeURIComponent(driver._id)}`, { method: "DELETE", token }), "Driver account removed."); }} className="rounded-lg border border-rose-200 px-3 py-2 text-[10px] font-semibold text-rose-700">Remove</button></div></article>)}{data.drivers.length === 0 && <p className="rounded-xl bg-white/80 p-4 text-xs text-slate-500">No driver accounts found. Create one using the form.</p>}</div></section>
         <form hidden={activeTab !== "drivers"} onSubmit={saveDriverEdits} className="rounded-3xl border border-[#dfe4f3] bg-white p-5 shadow-sm sm:p-7 xl:col-span-2"><SectionTitle eyebrow="Driver operations" title="Edit a driver account"/><div className="mt-4 grid gap-3 sm:grid-cols-2"><SelectField label="Driver" value={driverEditId} onChange={(event) => { const driver = data.drivers.find((item) => String(item._id) === event.target.value); setDriverEditId(event.target.value); setDriverEditForm(driver ? { name: driver.name || "", email: driver.email || "", phone: driver.phone || "" } : { name: "", email: "", phone: "" }); }}><option value="">Choose driver</option>{data.drivers.map((driver) => <option key={driver._id} value={driver._id}>{driver.name}</option>)}</SelectField><Field label="Full name" required disabled={!driverEditId} value={driverEditForm.name} onChange={(event) => setDriverEditForm({ ...driverEditForm, name: event.target.value })}/><Field label="Email address" required type="email" disabled={!driverEditId} value={driverEditForm.email} onChange={(event) => setDriverEditForm({ ...driverEditForm, email: event.target.value })}/><Field label="Phone" disabled={!driverEditId} value={driverEditForm.phone} onChange={(event) => setDriverEditForm({ ...driverEditForm, phone: event.target.value })}/><button disabled={busy || !driverEditId} className="min-h-10 self-end rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white disabled:opacity-50">Save driver details</button></div></form>
         <div id="bus-assignment-panel" hidden={activeTab !== "drivers"} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7"><SectionTitle eyebrow="Driver operations" title="Assign a bus to a driver" action={<span className="text-xs text-slate-500">{data.drivers.length} drivers</span>}/><p className="mt-2 text-xs leading-5 text-slate-500">Choose one available vehicle for each driver. Assignments are saved to the fleet record.</p><div className="mt-5 space-y-3">{data.drivers.map((driver) => <article key={driver._id} className="grid gap-3 rounded-2xl border border-slate-100 bg-[#fbfcff] p-4 sm:grid-cols-[1fr_1fr] sm:items-center"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[#34405d]">{driver.name}</p><p className="mt-1 truncate text-xs text-[#7d88a1]">{driver.email}</p></div><SelectField label={`Assign bus to ${driver.name}`} value={idOf(driver.assignedBus) || ""} disabled={busy} onChange={(event) => assignDriver(driver, event.target.value)}><option value="">No bus assigned</option>{data.buses.filter((bus) => !bus.driver || String(idOf(bus.driver)) === String(driver._id)).map((bus) => <option key={bus._id} value={bus._id}>{bus.busNumber} · {bus.route?.routeName || "Route pending"}</option>)}</SelectField></article>)}{data.drivers.length === 0 && <p className="rounded-2xl bg-[#f6f7fb] p-5 text-sm text-slate-500">No driver accounts found. Create the first account here.</p>}</div></div>
       </section>
@@ -325,7 +345,7 @@ export default function AdminHomePage() {
     <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
       {data.routes.map((route) => {
         const routeBuses = data.buses.filter((bus) => String(idOf(bus.route)) === String(route._id));
-        const operatingBusCount = routeBuses.filter((bus) => bus.status === "active" && bus.driver && data.shifts.some((shift) => shift.status === "active" && String(idOf(shift.bus)) === String(bus._id) && String(idOf(shift.route)) === String(route._id))).length;
+        const operatingBusCount = routeBuses.filter((bus) => bus.operating === true).length;
         const routeReadiness = operatingBusCount ? `${operatingBusCount} bus${operatingBusCount === 1 ? "" : "es"} operating` : !routeBuses.length ? "No bus assigned" : routeBuses.every((bus) => bus.status === "maintenance") ? "All buses under maintenance" : routeBuses.some((bus) => bus.driver) ? "Waiting for driver shift" : "Driver assignment needed";
         const routeStops = (data.stopsByRoute[route._id] || []).slice().sort((a, b) => (Number(a.stopOrder) || 0) - (Number(b.stopOrder) || 0));
         return <article key={route._id} className="min-w-0 rounded-2xl border border-[#e5e9f5] bg-gradient-to-br from-white to-[#f6f8ff] p-4 transition duration-200 hover:-translate-y-1 hover:border-[#bdc9ef] hover:shadow-md sm:p-5">
@@ -336,7 +356,7 @@ export default function AdminHomePage() {
           {route.description && <p className="mt-3 text-xs leading-5 text-[#74809a]">{route.description}</p>}
           <div className="mt-4 border-t border-[#e8ebf4] pt-4">
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#74809a]">Assigned buses &amp; drivers</p>
-            <div className="mt-2 space-y-2">{routeBuses.map((bus) => { const shiftActive = data.shifts.some((shift) => shift.status === "active" && String(idOf(shift.bus)) === String(bus._id) && String(idOf(shift.route)) === String(route._id)); const operating = bus.status === "active" && Boolean(bus.driver) && shiftActive; const busState = bus.status === "maintenance" ? "Maintenance" : operating ? "On shift · accepting bookings" : shiftActive ? "Shift active · bus unavailable" : bus.status === "active" && bus.driver ? "Active status · driver shift missing" : bus.driver ? "Assigned · driver shift needed" : "No driver assigned"; return <div key={bus._id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2.5"><div className="min-w-0"><p className="truncate text-xs font-semibold text-[#34405d]">{bus.busNumber}</p><p className="mt-0.5 truncate text-[10px] text-[#8992a8]">Driver · {bus.driver?.name || data.drivers.find((driver) => String(driver._id) === String(idOf(bus.driver)))?.name || "Unassigned"}</p><p className={`mt-1 text-[10px] font-semibold ${operating ? "text-[#16866f]" : "text-[#a75b2a]"}`}>{busState} · {bus.availableSeats ?? 0}/{bus.capacity ?? "—"} seats free</p></div><span className={`shrink-0 rounded-lg px-2 py-1 text-[10px] ${operating ? "bg-[#e4f8f0] text-[#16866f]" : "bg-[#fff2e9] text-[#9a653d]"}`}>{bus.status || "idle"}</span></div>; })}{routeBuses.length === 0 && <p className="rounded-xl bg-white px-3 py-2.5 text-xs text-[#8992a8]">No bus assigned yet. Assign one below.</p>}</div>
+        <div className="mt-2 space-y-2">{routeBuses.map((bus) => { const operating = bus.operating === true; const busState = bus.status === "maintenance" ? "Maintenance" : operating ? "On shift · accepting bookings" : bus.driver ? "Assigned · driver shift needed" : "No driver assigned"; return <div key={bus._id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2.5"><div className="min-w-0"><p className="truncate text-xs font-semibold text-[#34405d]">{bus.busNumber}</p><p className="mt-0.5 truncate text-[10px] text-[#8992a8]">Driver · {bus.driver?.name || data.drivers.find((driver) => String(driver._id) === String(idOf(bus.driver)))?.name || "Unassigned"}</p><p className={`mt-1 text-[10px] font-semibold ${operating ? "text-[#16866f]" : "text-[#a75b2a]"}`}>{busState} · {bus.availableSeats ?? 0}/{bus.capacity ?? "—"} seats free</p></div><span className={`shrink-0 rounded-lg px-2 py-1 text-[10px] ${operating ? "bg-[#e4f8f0] text-[#16866f]" : "bg-[#fff2e9] text-[#9a653d]"}`}>{bus.status || "idle"}</span></div>; })}{routeBuses.length === 0 && <p className="rounded-xl bg-white px-3 py-2.5 text-xs text-[#8992a8]">No bus assigned yet. Assign one below.</p>}</div>
           </div>
           <div className="mt-4 border-t border-[#e8ebf4] pt-4">
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#74809a]">Journey stops</p>
