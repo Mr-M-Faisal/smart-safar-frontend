@@ -66,7 +66,7 @@ export default function PublicLayout({ children }) {
         </div>
       </nav>
       <footer className="border-t border-white/15 bg-gradient-to-br from-[#344d91] via-[#40599f] to-[#26386e] pb-24 text-white lg:pb-0">
-        <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-12 sm:px-8 md:grid-cols-[1.35fr_.8fr_1fr] md:gap-12 lg:px-12 lg:py-16">
+        <div className="mx-auto grid max-w-[1440px] gap-10 px-5 py-12 sm:grid-cols-2 sm:px-8 sm:gap-12 lg:grid-cols-[1.35fr_.8fr_1fr] lg:px-12 lg:py-16">
           <div>
             <Link href="/" className="inline-flex items-center gap-3" aria-label="Smart Safar home">
               <BrandMark tone="dark" />

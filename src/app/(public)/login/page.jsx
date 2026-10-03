@@ -104,8 +104,8 @@ export default function LoginPage() {
       {googleClientId && <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onLoad={() => setGoogleLoaded(true)} />}
       <main className="relative min-h-[78vh] overflow-hidden bg-[radial-gradient(circle_at_10%_15%,#dce5fb,transparent_35%),linear-gradient(145deg,#f4f5fb,#e8ecf8)] px-4 py-10 text-[#25304f] sm:px-8 sm:py-14">
         <div className="pointer-events-none absolute -right-24 top-20 h-72 w-72 rounded-full bg-[#b7c5ed]/40 blur-3xl" />
-        <div className="relative mx-auto grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/70 bg-white/25 shadow-[0_24px_70px_rgba(53,67,112,.18)] backdrop-blur-xl md:grid-cols-[.9fr_1.1fr]">
-          <section className="relative isolate flex min-h-72 flex-col justify-between overflow-hidden p-7 text-white sm:p-9 md:min-h-[610px]">
+        <div className="relative mx-auto grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/70 bg-white/25 shadow-[0_24px_70px_rgba(53,67,112,.18)] backdrop-blur-xl lg:grid-cols-[.9fr_1.1fr]">
+          <section className="relative isolate flex min-h-72 flex-col justify-between overflow-hidden p-7 text-white sm:p-9 lg:min-h-[610px]">
             <img src="/images/faisalabad-clock-tower.jpg" alt="Ghanta Ghar Clock Tower in Faisalabad at sunset" className="absolute inset-0 -z-20 h-full w-full object-cover object-center" />
             <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#101d3c]/95 via-[#18284e]/55 to-[#233868]/35" />
             <Link href="/" className="inline-flex w-fit items-center gap-3 text-sm font-bold"><BrandMark size="sm" tone="dark" />Smart Safar</Link>
