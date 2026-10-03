@@ -30,13 +30,13 @@ export default function PublicLayout({ children }) {
   }, [pathname]);
   return (
     <div className="min-h-screen w-full min-w-0 overflow-x-clip bg-night text-white">
-      <header className="sticky top-0 z-[1200] border-b border-[#d9def0] bg-[#eef0fa]/95 text-[#25304f] shadow-[0_5px_24px_rgba(40,52,92,.08)] backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-8 sm:py-4 lg:px-12">
-          <Link href="/" className="flex min-w-0 items-center gap-2.5 sm:gap-3" aria-label="Smart Safar home">
-            <BrandMark size="header" />
-            <span>
-              <span className="block text-[13px] font-bold tracking-tight text-[#25304f] sm:text-sm">Smart Safar</span>
-              <span className="block text-[8px] font-semibold uppercase tracking-[.16em] text-[#586fb5] sm:text-[10px] sm:tracking-[0.2em]">Faisalabad Transit</span>
+      <header className="public-header sticky top-0 z-[1200] border-b border-[#d9def0] bg-[#eef0fa]/95 text-[#25304f] shadow-[0_5px_24px_rgba(40,52,92,.08)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-[var(--layout-gutter)] py-2.5 sm:gap-4 sm:px-8 sm:py-4 lg:px-12">
+          <Link href="/" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Smart Safar home">
+            <BrandMark size="header" className="public-brand-mark" />
+            <span className="min-w-0">
+              <span className="block whitespace-nowrap text-[13px] font-bold tracking-tight text-[#25304f] sm:text-sm">Smart Safar</span>
+              <span className="public-brand-tagline block whitespace-nowrap text-[8px] font-semibold uppercase tracking-[.16em] text-[#586fb5] sm:text-[10px] sm:tracking-[0.2em]">Faisalabad Transit</span>
             </span>
           </Link>
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Main navigation">
@@ -52,7 +52,7 @@ export default function PublicLayout({ children }) {
         </div>
       </header>
       <div className="bg-[#f4f5fb] pb-24 lg:bg-transparent lg:pb-0">{children}</div>
-      <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-[1000] px-4 pb-[max(10px,env(safe-area-inset-bottom))] lg:hidden">
+      <nav aria-label="Mobile navigation" className="mobile-tab-bar fixed inset-x-0 bottom-0 z-[1000] px-[var(--layout-gutter)] pb-[max(10px,env(safe-area-inset-bottom))] lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-4 rounded-[1.35rem] border border-white/80 bg-[#111d38]/95 p-2 text-white shadow-[0_12px_36px_rgba(15,26,53,.3)] backdrop-blur-xl">
           {links.map(([label, href]) => {
             const active = pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
@@ -78,18 +78,18 @@ export default function PublicLayout({ children }) {
 
           <div>
             <h2 className="text-xs font-bold uppercase tracking-[.18em] text-[#b8f5e6]">Explore</h2>
-            <nav className="mt-4 flex flex-col items-start gap-3 text-sm text-white/80" aria-label="Footer navigation">
-              {links.map(([label, href]) => { const NavLink = href === "/passenger" ? BookingLink : Link; return <NavLink key={href} href={href} className="transition hover:translate-x-1 hover:text-white">{label}</NavLink>; })}
-              <Link href={signInHref} className="transition hover:translate-x-1 hover:text-white">Sign in</Link>
+            <nav className="footer-explore-list mt-3 flex flex-col items-stretch text-sm text-white/80 sm:mt-4 sm:items-start sm:gap-3" aria-label="Footer navigation">
+              {links.map(([label, href]) => { const NavLink = href === "/passenger" ? BookingLink : Link; return <NavLink key={href} href={href} className="footer-explore-link flex min-h-11 items-center border-b border-white/10 transition hover:translate-x-1 hover:text-white sm:min-h-0 sm:border-0">{label}</NavLink>; })}
+              <Link href={signInHref} className="footer-explore-link flex min-h-11 items-center border-b border-white/10 transition hover:translate-x-1 hover:text-white sm:min-h-0 sm:border-0">Sign in</Link>
             </nav>
           </div>
 
           <div>
             <h2 className="text-xs font-bold uppercase tracking-[.18em] text-[#b8f5e6]">What you can explore</h2>
-            <ul className="mt-4 space-y-3 text-sm leading-5 text-white/75">
-              <li className="flex gap-2"><span className="text-[#a8efdf]">✓</span> Search local routes and stops</li>
-              <li className="flex gap-2"><span className="text-[#a8efdf]">✓</span> View buses and seat availability</li>
-              <li className="flex gap-2"><span className="text-[#a8efdf]">↗</span> Follow live tracking as it is built</li>
+            <ul className="footer-feature-list mt-3 space-y-1 text-sm leading-5 text-white/75 sm:mt-4 sm:space-y-3">
+              <li className="flex min-h-11 items-center gap-2 sm:min-h-0"><span className="text-[#a8efdf]">✓</span> Search local routes and stops</li>
+              <li className="flex min-h-11 items-center gap-2 sm:min-h-0"><span className="text-[#a8efdf]">✓</span> View buses and seat availability</li>
+              <li className="flex min-h-11 items-center gap-2 sm:min-h-0"><span className="text-[#a8efdf]">↗</span> Follow live tracking as it is built</li>
             </ul>
           </div>
         </div>
