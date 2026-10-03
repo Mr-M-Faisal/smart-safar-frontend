@@ -37,11 +37,10 @@ export default function HomePage() {
             <img src="/images/faisalabad-clock-tower.jpg" alt="Ghanta Ghar, Faisalabad’s historic Clock Tower at sunset" className="clock-tower-photo h-[220px] w-full object-cover object-center sm:h-[300px] lg:h-[460px]" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#101d3c]/85 via-transparent to-[#101d3c]/10" />
             <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3 text-white sm:inset-x-7 sm:bottom-7">
-              <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#a8efdf]">The heart of Lyallpur</p><p className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Ghanta Ghar</p><p className="mt-1 text-xs text-white/75">Faisalabad, Punjab</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#a8efdf]">The heart of Lyallpur</p><p className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Ghanta Ghar</p><p className="mt-1 text-xs text-white/75">Faisalabad, Punjab</p><p className="mt-1 text-[9px] text-white/60">Photo · Government of Punjab</p></div>
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-white/35 bg-white/15 text-xl backdrop-blur">⌖</span>
             </div>
           </div>
-          <p className="mt-3 text-right text-[10px] font-medium text-white/65">Clock Tower photo · Government of Punjab</p>
         </div>
       </section>
 
@@ -74,7 +73,7 @@ export default function HomePage() {
       <section className="bg-white px-[var(--layout-gutter)] py-[var(--section-space)] text-[#25304f] sm:px-8 lg:px-12">
         <div className="mx-auto grid max-w-[1360px] items-center gap-8 lg:grid-cols-[.75fr_1.25fr] lg:gap-12">
           <div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Know the way around</p><h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Faisalabad, at a glance.</h2><p className="mt-4 max-w-lg text-sm leading-7 text-[#67738e]">Explore the local transit network around familiar places, from Ghanta Ghar to neighbourhood stops. Choose a route to see its journey and the buses serving it.</p><Link href="/routes" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#43599f]">Explore city routes <span aria-hidden="true">→</span></Link></div>
-          <div className="relative h-[320px] overflow-hidden rounded-[1.75rem] border border-[#e5e9f4] bg-[#e9edf7] p-2 shadow-[0_18px_48px_rgba(53,67,112,.12)] sm:h-[430px] sm:p-3"><HomeRouteMap /><div className="pointer-events-none absolute left-5 top-5 z-[500] rounded-xl border border-white/80 bg-white/90 px-4 py-3 shadow-lg backdrop-blur"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-[#7185c6]">Transit network</p><p className="mt-1 text-xs font-semibold text-[#293553]">Faisalabad · route map</p></div></div>
+          <div className="relative h-[320px] overflow-hidden rounded-[1.75rem] border border-[#e5e9f4] bg-[#e9edf7] p-2 shadow-[0_18px_48px_rgba(53,67,112,.12)] sm:h-[430px] sm:p-3"><HomeRouteMap /></div>
         </div>
       </section>
     </main>

@@ -15,8 +15,9 @@ export default function BookingLink({ routeId, busId, seatNumber, className, chi
   async function openBooking(event) {
     event.preventDefault();
     if (routeId) saveBookingSelection({ routeId, busId: busId || "" });
+    const previewHref = `/booking-preview${routeId ? `?route=${encodeURIComponent(routeId)}${busId ? `&bus=${encodeURIComponent(busId)}` : ""}${seatNumber ? `&seat=${encodeURIComponent(seatNumber)}` : ""}` : "?booking=1"}`;
     const token = readSessionToken("commuter");
-    if (!token) { router.push(href); return; }
+    if (!token) { router.push(previewHref); return; }
     try {
       const profile = await apiRequest("/auth/profile", { token });
       if (profile.role === "commuter") {
@@ -24,9 +25,9 @@ export default function BookingLink({ routeId, busId, seatNumber, className, chi
         return;
       }
     } catch {
-      // Send users with an invalid or unverifiable session to sign-in.
+      // Let guests preview real availability before asking them to sign in.
     }
-    router.push(href);
+    router.push(previewHref);
   }
 
   return <Link href={href} onClick={openBooking} className={className} {...linkProps}>{children}</Link>;

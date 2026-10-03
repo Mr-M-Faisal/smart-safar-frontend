@@ -8,6 +8,7 @@ import { clearSessionToken, readSessionToken, revokeAndClearSession } from "@/li
 import ProfileMenu from "@/components/layout/ProfileMenu";
 import BookingLink from "@/components/layout/BookingLink";
 import BrandMark from "@/components/layout/BrandMark";
+import ConnectivityNotice from "@/components/layout/ConnectivityNotice";
 
 const links = [
   ["Home", "/"],
@@ -15,6 +16,10 @@ const links = [
   ["Routes", "/routes"],
   ["Book a seat", "/passenger"],
 ];
+
+function isNavigationActive(pathname, href) {
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)) || (href === "/passenger" && pathname.startsWith("/booking-preview"));
+}
 
 export default function PublicLayout({ children }) {
   const pathname = usePathname();
@@ -41,7 +46,7 @@ export default function PublicLayout({ children }) {
           </Link>
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Main navigation">
             {links.map(([label, href]) => {
-              const active = pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+              const active = isNavigationActive(pathname, href);
               const NavLink = href === "/passenger" ? BookingLink : Link;
               return <NavLink key={href} href={href} aria-current={active ? "page" : undefined} className={`rounded-full px-3 py-2 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-[#405ba7] hover:shadow-sm ${active ? "bg-white text-[#405ba7] shadow-sm" : "text-[#596681]"}`}>{label}</NavLink>;
             })}
@@ -51,11 +56,12 @@ export default function PublicLayout({ children }) {
           </div>
         </div>
       </header>
+      <ConnectivityNotice />
       <div className="bg-[#f4f5fb] pb-24 lg:bg-transparent lg:pb-0">{children}</div>
       <nav aria-label="Mobile navigation" className="mobile-tab-bar fixed inset-x-0 bottom-0 z-[1000] px-[var(--layout-gutter)] pb-[max(10px,env(safe-area-inset-bottom))] lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-4 rounded-[1.35rem] border border-white/80 bg-[#111d38]/95 p-2 text-white shadow-[0_12px_36px_rgba(15,26,53,.3)] backdrop-blur-xl">
           {links.map(([label, href]) => {
-            const active = pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+            const active = isNavigationActive(pathname, href);
             const NavLink = href === "/passenger" ? BookingLink : Link;
             const icon = href === "/" ? <><path d="m3.5 10 8.5-7 8.5 7v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19v-9Z"/><path d="M9 20.5v-7h6v7"/></> : href === "/live-map" ? <><path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Z"/><path d="M8.5 4v13.5M15.5 6.5V20"/></> : href === "/routes" ? <><path d="M5 4h14M5 10h14M5 16h14"/><circle cx="3" cy="4" r=".6" fill="currentColor"/><circle cx="3" cy="10" r=".6" fill="currentColor"/><circle cx="3" cy="16" r=".6" fill="currentColor"/></> : <><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M7 5V3m10 2V3M3 10h18M8 14h3m2 0h3"/></>;
             return <NavLink key={href} href={href} aria-current={active ? "page" : undefined} className={`flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[10px] font-semibold transition ${active ? "bg-[#536bb7] text-white shadow-[0_5px_16px_rgba(83,107,183,.35)]" : "text-white/65 hover:bg-white/10 hover:text-white"}`}>

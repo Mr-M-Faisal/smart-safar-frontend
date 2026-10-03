@@ -295,7 +295,7 @@ export default function LiveMapExperience() {
         </RevealOnScroll>
 
         <div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-[#e9edff] text-[#536bb7]" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-[#7185c6]" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo locations · simulated" : realtimeStatus === "live" ? "Live location updates" : realtimeStatus === "reconnecting" ? "Realtime connection retrying" : "Transit data connected · waiting for GPS"}</span>
+          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo mode · simulated locations" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : "Transit data connected · waiting for GPS"}</span>
           {selectedRoute && <span className="max-w-full truncate rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#68738e]">{selectedRoute.startPoint} <span className="px-1 text-[#20a992]">→</span> {selectedRoute.endPoint}</span>}
         </div>
 

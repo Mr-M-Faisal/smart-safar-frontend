@@ -91,10 +91,14 @@ export async function apiRequest(path, { token, ...options } = {}) {
 }
 
 export async function getBackendStatus() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(`${serverOrigin}/`, { cache: "no-store" });
+    const response = await fetch(`${serverOrigin}/`, { cache: "no-store", signal: controller.signal });
     return response.ok ? "online" : "error";
   } catch {
     return "offline";
+  } finally {
+    clearTimeout(timeoutId);
   }
 }

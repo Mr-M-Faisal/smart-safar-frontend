@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import LeafletRouteMap from "@/components/map/LeafletRouteMap";
 import { FAISALABAD_CENTER, demoStopsForRoute, faisalabadDemoCoordinates, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
+import { saveBookingSelection } from "@/lib/bookingSelection";
 
 function makeDemoBuses() {
   return faisalabadDemoRoutes.flatMap((route, routeIndex) => route.buses.map((bus, busIndex) => {
@@ -76,9 +77,18 @@ export default function HomeRouteMap() {
       <div ref={mapContainerRef} className="absolute inset-0 z-0 overflow-hidden rounded-[inherit] pt-[66px]">
         {mapVisible ? <LeafletRouteMap routeSegments={segments} buses={buses} selectedRouteId={selectedRouteId} onSelectRoute={setSelectedRouteId} className="rounded-none" ariaLabel="Faisalabad transit map showing all bus routes, stops, and buses" /> : <div className="map-grid-light grid h-full place-items-center bg-[#e9edf7]"><span className="rounded-full border border-white/80 bg-white/85 px-4 py-2 text-xs font-semibold text-[#7185c6] shadow-sm">Map ready when you are</span></div>}
       </div>
+      <div className="absolute inset-x-3 top-3 z-20 rounded-xl border border-white/80 bg-white/90 p-2 shadow-md backdrop-blur sm:inset-x-5 sm:top-4 sm:p-2.5">
+        <div className="mb-1.5 px-1 text-[9px] font-bold uppercase tracking-[.16em] text-[#7185c6]">Tap a route to preview it</div>
+        <div role="group" aria-label="Choose a route from the homepage map" className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {segments.map((route) => {
+            const selected = String(route.routeId) === String(selectedRouteId);
+            return <button key={route.routeId} type="button" aria-pressed={selected} onClick={() => { setSelectedRouteId(route.routeId); saveBookingSelection({ routeId: route.routeId, busId: "" }); }} className={`min-h-9 shrink-0 max-w-[12rem] truncate rounded-lg px-2.5 text-[10px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#536bb7] ${selected ? "bg-[#536bb7] text-white" : "bg-[#f1f3fa] text-[#53617e] hover:bg-[#e5e9f7]"}`}>{route.routeName}</button>;
+          })}
+        </div>
+      </div>
       <div className="pointer-events-none absolute bottom-5 left-5 z-10 flex max-w-[calc(100%-2.5rem)] flex-wrap items-center gap-2 rounded-xl border border-white/80 bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#58647f] shadow-md backdrop-blur sm:bottom-6 sm:left-6">
         <span className={`h-2 w-2 rounded-full ${source === "backend" ? "bg-[#20bba5]" : "bg-[#e49353]"}`} />
-        {selectedRouteName || (source === "backend" ? `${segments.length} routes · live data` : `${segments.length} sample routes · select a line`)}
+        {selectedRouteName || (source === "backend" ? `${segments.length} routes · transit data` : `${segments.length} routes · demo preview`)}
       </div>
     </>
   );
