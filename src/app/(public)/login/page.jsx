@@ -109,7 +109,7 @@ export default function LoginPage() {
             <img src="/images/faisalabad-clock-tower.jpg" alt="Ghanta Ghar Clock Tower in Faisalabad at sunset" className="absolute inset-0 -z-20 h-full w-full object-cover object-center" />
             <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#101d3c]/95 via-[#18284e]/55 to-[#233868]/35" />
             <Link href="/" className="inline-flex w-fit items-center gap-3 text-sm font-bold"><BrandMark size="sm" tone="dark" />Smart Safar</Link>
-            <div className="mt-10"><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#a8efdf]">Faisalabad transit</p><h1 className="mt-3 max-w-sm text-3xl font-semibold tracking-tight sm:text-4xl">Find your way through the city.</h1><p className="mt-4 max-w-sm text-sm leading-6 text-white/85">Explore a route first. When you are ready to reserve a seat, sign in and continue your booking.</p></div>
+            <div className="mt-10"><p className="text-sm font-semibold tracking-wide text-[#a8efdf] sm:text-base">Faisalabad, One Stop Closer</p><h1 className="mt-3 max-w-sm text-3xl font-semibold tracking-tight sm:text-4xl">Find your way through the city.</h1><p className="mt-4 max-w-sm text-sm leading-6 text-white/85">Explore a route first. When you are ready to reserve a seat, sign in and continue your booking.</p></div>
             <p className="mt-8 text-xs text-white/55">Smart Safar · Public transit</p>
           </section>
 

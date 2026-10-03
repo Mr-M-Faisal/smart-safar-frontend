@@ -14,8 +14,8 @@ export default function HomePage() {
     <main className="overflow-hidden">
       <section className="hero-scene relative isolate mx-auto grid min-h-[calc(100svh-76px)] max-w-[1600px] items-center gap-6 px-[var(--layout-gutter)] py-6 sm:gap-8 sm:px-8 sm:py-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-14 lg:px-12 lg:py-16">
         <div className="animate-enter relative z-10 max-w-2xl">
-          <div className="hero-eyebrow mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#1e2d55]/45 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[#a5f1df] backdrop-blur-md sm:mb-7 sm:px-3.5 sm:text-[10px] sm:tracking-[0.18em]">
-            <span className="h-1.5 w-1.5 rounded-full bg-aqua" /> Faisalabad, one stop closer
+          <div className="hero-eyebrow mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#1e2d55]/45 px-3 py-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[#a5f1df] backdrop-blur-md sm:mb-7 sm:px-3.5 sm:text-sm sm:tracking-[0.1em]">
+            <span className="h-1.5 w-1.5 rounded-full bg-aqua" /> Faisalabad, One Stop Closer
           </div>
           <h1 className="home-hero-title text-[length:var(--font-hero,clamp(2.1rem,9vw,2.9rem))] leading-[var(--line-hero,.98)] sm:text-[length:var(--font-hero,clamp(2.75rem,6.3vw,4.5rem))] lg:text-[length:var(--font-hero,clamp(3rem,6.5vw,6.3rem))] font-semibold text-white">Find your way<br />through <span className="font-serif font-normal italic text-aqua">Faisalabad.</span></h1>
           <p className="home-hero-copy mt-3 max-w-lg text-white/80 sm:mt-7">See routes, check bus updates, and plan your next trip across the city.</p>
