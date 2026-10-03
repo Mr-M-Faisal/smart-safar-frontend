@@ -7,6 +7,14 @@ import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelecti
 
 function displayBus(bus) { return bus?.busNumber || `Bus ${String(bus?._id || "").slice(-5)}`; }
 
+function describeRouteReadiness(buses) {
+  if (!buses.length) return "No buses are assigned to this route yet.";
+  if (buses.every((bus) => bus.status === "maintenance")) return "The buses assigned to this route are currently under maintenance.";
+  const withoutDriver = buses.filter((bus) => !bus.driver).length;
+  if (withoutDriver === buses.length) return `${buses.length} ${buses.length === 1 ? "bus is" : "buses are"} assigned, but no driver is assigned yet.`;
+  return `${buses.length} ${buses.length === 1 ? "bus is" : "buses are"} assigned. A driver must start a shift before a bus appears here and can be booked.`;
+}
+
 export default function BookingPreviewPage() {
   const [routes, setRoutes] = useState([]);
   const [routeId, setRouteId] = useState("");
@@ -17,6 +25,7 @@ export default function BookingPreviewPage() {
   const [busesState, setBusesState] = useState("idle");
   const [busReload, setBusReload] = useState(0);
   const [busesError, setBusesError] = useState("");
+  const [routeReadiness, setRouteReadiness] = useState("");
   const [seats, setSeats] = useState([]);
   const [capacity, setCapacity] = useState(0);
   const [seatState, setSeatState] = useState("idle");
@@ -50,19 +59,33 @@ export default function BookingPreviewPage() {
   }, []);
 
   useEffect(() => {
-    if (!routeId) { setBuses([]); setBusId(""); setBusesState("idle"); return undefined; }
+    if (!routeId) { setBuses([]); setBusId(""); setBusesState("idle"); setRouteReadiness(""); return undefined; }
     let active = true;
     setBusesState("loading");
     setBusesError("");
+    setRouteReadiness("");
+    let checkedAssignments = false;
     const refresh = async () => {
       try {
         const result = await apiRequest(`/buses/route/${encodeURIComponent(routeId)}/active`);
         if (!active) return;
-        const operatingBuses = Array.isArray(result) ? result : [];
+        if (!Array.isArray(result)) throw new Error("The transit server returned an unexpected bus list. Please retry.");
+        const operatingBuses = result;
         setBuses(operatingBuses);
         setBusId((current) => operatingBuses.some((bus) => String(bus._id) === String(current)) ? current : operatingBuses.length === 1 ? operatingBuses[0]._id : "");
         setBusesState("ready");
         setBusesError("");
+        if (operatingBuses.length) setRouteReadiness("");
+        else if (!checkedAssignments) {
+          checkedAssignments = true;
+          try {
+            const assignedBuses = await apiRequest(`/buses?route=${encodeURIComponent(routeId)}`);
+            if (active && Array.isArray(assignedBuses)) setRouteReadiness(describeRouteReadiness(assignedBuses));
+            else if (active) setRouteReadiness("No active buses were returned, and assignment details could not be checked. Please retry.");
+          } catch {
+            if (active) setRouteReadiness("No active buses were returned, and assignment details could not be checked. Please retry.");
+          }
+        }
       } catch (error) {
         if (!active) return;
         setBusesError(error.message || "Could not load active buses. Check your connection and retry.");
@@ -129,7 +152,7 @@ export default function BookingPreviewPage() {
         </label>
 
         {routeId && <div><p className="text-xs font-semibold text-[#596681]">2 · Choose an active bus</p>
-          {busesState === "error" ? <p role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{busesError}<button type="button" onClick={() => setBusReload((value) => value + 1)} className="ml-2 font-semibold underline">Retry</button></p> : busesState === "loading" ? <p className="mt-2 rounded-xl bg-[#f6f7fb] p-3 text-xs text-[#74809a]">Checking for buses currently on shift…</p> : !buses.length ? <p className="mt-2 rounded-xl bg-[#f6f7fb] p-4 text-sm text-[#74809a]">No buses running on this route right now.</p> : <div className="mt-2 grid gap-2 sm:grid-cols-2">{buses.map((bus) => <button key={bus._id} type="button" aria-pressed={String(busId) === String(bus._id)} onClick={() => chooseBus(bus._id)} className={`min-h-16 rounded-xl border p-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7185c6] ${String(busId) === String(bus._id) ? "border-[#536bb7] bg-[#eef1fc] shadow-sm" : "border-[#e3e7f1] bg-white hover:border-[#9eaddf]"}`}><span className="block text-sm font-semibold">{displayBus(bus)}</span><span className="mt-1 block text-xs text-[#74809a]">{bus.availableSeats ?? "—"} seats free{bus.etaMinutes != null ? ` · ETA ${Math.round(bus.etaMinutes)} min` : ""}{bus.fare != null ? ` · PKR ${bus.fare}` : ""}</span></button>)}</div>}
+          {busesState === "error" ? <p role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{busesError}<button type="button" onClick={() => setBusReload((value) => value + 1)} className="ml-2 font-semibold underline">Retry</button></p> : busesState === "loading" ? <p className="mt-2 rounded-xl bg-[#f6f7fb] p-3 text-xs text-[#74809a]">Checking for buses currently on shift…</p> : !buses.length ? <div className="mt-2 rounded-xl bg-[#f6f7fb] p-4 text-sm text-[#74809a]"><p>No buses running on this route right now.</p>{routeReadiness && <p className="mt-1 text-xs leading-5">{routeReadiness}</p>}<button type="button" onClick={() => setBusReload((value) => value + 1)} className="mt-2 min-h-11 font-semibold text-[#536bb7] underline">Check again</button></div> : <div className="mt-2 grid gap-2 sm:grid-cols-2">{buses.map((bus) => <button key={bus._id} type="button" aria-pressed={String(busId) === String(bus._id)} onClick={() => chooseBus(bus._id)} className={`min-h-16 rounded-xl border p-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7185c6] ${String(busId) === String(bus._id) ? "border-[#536bb7] bg-[#eef1fc] shadow-sm" : "border-[#e3e7f1] bg-white hover:border-[#9eaddf]"}`}><span className="block text-sm font-semibold">{displayBus(bus)}</span><span className="mt-1 block text-xs text-[#74809a]">{bus.availableSeats ?? "—"} seats free{bus.etaMinutes != null ? ` · ETA ${Math.round(bus.etaMinutes)} min` : ""}{bus.fare != null ? ` · PKR ${bus.fare}` : ""}</span></button>)}</div>}
         </div>}
 
         {selectedBus && <div><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-[#596681]">3 · Seat availability</p><span className="rounded-full bg-[#e8faf4] px-3 py-1 text-[10px] font-semibold text-[#167b6e]">Refreshes every 5 seconds</span></div>
