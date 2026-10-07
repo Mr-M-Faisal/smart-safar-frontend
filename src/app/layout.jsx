@@ -4,7 +4,7 @@ import BootSplash from "@/components/layout/BootSplash";
 import { ThemeBootstrap } from "@/components/layout/ProfileMenu";
 
 export const metadata = {
-  title: "Smart Safar | Faisalabad Transit",
+  title: "Smart Safar | Faisal Transit",
   description: "Plan your journey with route, stop, and transit information for Faisalabad.",
   manifest: "/manifest.webmanifest",
   icons: {
