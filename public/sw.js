@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'smart-safar-v2';
+const CACHE_VERSION = 'smart-safar-v1';
 const STATIC_CACHE = `smart-safar-static-${CACHE_VERSION}`;
 const TILE_CACHE = `smart-safar-tiles-${CACHE_VERSION}`;
 const MAX_TILE_ENTRIES = 400;

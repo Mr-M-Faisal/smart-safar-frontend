@@ -319,16 +319,9 @@ function PassengerDashboard() {
 
   return (
     <>
-    <div className="p-4 max-w-lg mx-auto pb-6">
-      <section className="flex flex-col justify-between gap-2 rounded-2xl bg-[#111d3d] p-4 text-white shadow-xs">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#a8efdf]">Passenger dashboard</p>
-          <h1 className="mt-1 text-lg font-bold tracking-tight">
-            Welcome{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}
-          </h1>
-          <p className="text-xs text-white/70 mt-0.5">Book rides, view tickets, and manage trip security.</p>
-        </div>
-      </section>
+    <main className="workspace-theme min-h-screen bg-[#f4f5fb] px-4 py-7 text-[#293553] sm:px-8 sm:py-10 lg:px-12">
+      <div className="mx-auto max-w-[1240px]">
+        <section className="flex flex-col justify-between gap-4 rounded-[1.75rem] bg-gradient-to-br from-[#26386e] via-[#354b8d] to-[#4560a8] p-6 text-white shadow-[0_18px_45px_rgba(47,66,126,.18)] sm:flex-row sm:items-end sm:p-8"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#a8efdf]">Passenger dashboard</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Your journeys, {profile?.name?.split(" ")[0] || "all in one place"}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Book a ride, check route updates, and share your trip with people you trust.</p></div></section>
 
         {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`mt-5 rounded-2xl border px-4 py-3 text-sm leading-5 ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
 
@@ -368,6 +361,7 @@ function PassengerDashboard() {
           {activeTab === "report" && <section role="tabpanel" id="passenger-panel-report" aria-labelledby="passenger-tab-report" className="rounded-3xl border border-white bg-[#e9ebf8] p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7"><PanelTitle eyebrow="Help improve service" title="Report a bus issue"/><p className="mt-2 text-xs leading-5 text-[#7b859c]">Send a safety or vehicle-condition report to the transit team.</p><form onSubmit={sendReport} className="mt-4 space-y-3"><label className="block"><span className="text-xs font-semibold text-[#596681]">Bus</span><select required value={reportForm.bus} onChange={(event) => setReportForm({ ...reportForm, bus: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-white bg-white px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">Choose a bus</option>{buses.map((bus) => <option key={bus._id} value={bus._id}>{bus.busNumber} · {bus.route?.routeName || "Route details unavailable"}</option>)}</select></label><label className="block"><span className="text-xs font-semibold text-[#596681]">Report type</span><select value={reportForm.reportType} onChange={(event) => setReportForm({ ...reportForm, reportType: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-xl border border-white bg-white px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="condition">Vehicle condition</option><option value="safety">Safety concern</option></select></label><label className="block"><span className="text-xs font-semibold text-[#596681]">What happened?</span><textarea required minLength={3} maxLength={2000} rows={4} value={reportForm.description} onChange={(event) => setReportForm({ ...reportForm, description: event.target.value })} placeholder="Describe the issue so the transit team can review it…" className="mt-1.5 w-full resize-y rounded-xl border border-white bg-white px-3 py-3 text-sm leading-5 text-[#34405d] outline-none placeholder:text-[#a1a9bc] focus:border-[#8093d1]"/></label><button disabled={busy === "report" || buses.length === 0} className="min-h-11 w-full rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white transition hover:bg-[#43599f] disabled:opacity-50">{busy === "report" ? "Sending report…" : "Submit report"}</button></form></section>}
         </div>
       </div>
+    </main>
     {bookingConfirmation && <BookingConfirmationModal booking={bookingConfirmation} onClose={closeBookingConfirmation} onViewBookings={() => { chooseDashboardTab("history"); closeBookingConfirmation(); }} onBookAnother={() => { closeBookingConfirmation(); document.getElementById("booking")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />}
     </>
   );

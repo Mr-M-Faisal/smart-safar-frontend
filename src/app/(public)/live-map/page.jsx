@@ -10,9 +10,5 @@ const LiveMapExperience = dynamic(() => import("@/components/map/LiveMapExperien
 });
 
 export default function LiveMapPage() {
-  return (
-    <div className="h-full w-full">
-      <LiveMapExperience />
-    </div>
-  );
+  return <LiveMapExperience />;
 }

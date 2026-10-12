@@ -247,18 +247,12 @@ export default function DriverHomePage() {
   }, [activeShift?._id, locationRefresh, pageState, token]);
 
   return (
-    <div className="p-4 max-w-lg mx-auto pb-6">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#536bb7]">Driver workspace</p>
-            <h1 className="text-xl font-bold tracking-tight text-[#111d3d]">
-              Good day{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}
-            </h1>
-          </div>
+    <main className="driver-scene workspace-theme relative isolate min-h-[70vh] bg-[#f4f5fb] px-4 py-8 text-[#25304f] sm:px-8 sm:py-12 lg:px-12">
+      <div className="mx-auto w-full max-w-[1180px]">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#536bb7]">Driver workspace · Faisalabad</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#25304f] sm:text-4xl">Good day{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#68738e]">Check your assigned vehicle and control your current transit shift.</p></div>
           {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" onSignOut={signOut} />}
         </div>
-      </div>
 
         {authState === "loading" && pageState !== "error" && <div className="mt-8 rounded-3xl border border-white bg-white p-6 text-sm text-[#68738e] shadow-sm" role="status">Loading your driver profile…</div>}
         {["signed-out", "expired", "denied"].includes(pageState) && <section className="mt-8 rounded-3xl border border-[#dfe3f1] bg-white p-6 shadow-[0_12px_36px_rgba(53,67,112,.08)] sm:p-8"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#e9edff] text-xl text-[#536bb7]" aria-hidden="true">↗</span><h2 className="mt-5 text-xl font-semibold text-[#293553]">{pageState === "denied" ? "Driver access only" : pageState === "expired" ? "Your session expired" : "Sign in to manage your shift"}</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[#74809a]">{pageState === "denied" ? "This account is not a driver account. Sign in with the driver credentials assigned by your administrator." : "Sign in with the email and password provided for your driver account. Your assigned bus and active shift will load automatically."}</p><Link href="/login" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#536bb7] px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#43599f]">Driver sign in <span className="ml-2" aria-hidden="true">→</span></Link></section>}
@@ -299,5 +293,6 @@ export default function DriverHomePage() {
           </section>
         </>}
       </div>
+    </main>
   );
 }

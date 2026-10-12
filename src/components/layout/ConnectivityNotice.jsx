@@ -73,18 +73,17 @@ export default function ConnectivityNotice() {
   if (status === "checking" || status === "online") return null;
   const offline = status === "offline";
   return (
-    <div role="status" className="flex items-center justify-between gap-2 border-b border-amber-300/40 bg-amber-500/10 px-3.5 py-1.5 text-[11px] font-medium leading-tight text-amber-200 backdrop-blur-md">
-      <span className="truncate">
+    <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs leading-5 text-amber-900 sm:px-8 lg:px-12">
+      <span>
         {offline
           ? (staleInfo
-              ? `Offline · Saved data (${staleInfo.time})`
-              : "Offline · Showing saved transit data")
+              ? `You’re offline. Showing saved data from ${staleInfo.date} ${staleInfo.time}. Live buses, seat picking, and booking need an active connection.`
+              : "You’re offline. Saved routes and stops remain available; live bus tracking, seat picking, and booking require an active connection.")
           : (staleInfo
-              ? `Server unreachable · Saved data (${staleInfo.time})`
-              : "Server unreachable · Offline mode")}
+              ? `Transit server unreachable. Showing saved data from ${staleInfo.date} ${staleInfo.time}.`
+              : "The transit server isn’t responding. Displayed demo data is not live service information.")}
       </span>
-      <button type="button" disabled={checking} onClick={() => { setChecking(true); setRetryKey((key) => key + 1); }} className="shrink-0 rounded-md bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-200 active:bg-amber-400/30 disabled:opacity-60">{checking ? "..." : "Retry"}</button>
+      <button type="button" disabled={checking} onClick={() => { setChecking(true); setRetryKey((key) => key + 1); }} className="min-h-9 shrink-0 rounded-lg bg-white px-3 font-semibold text-amber-900 shadow-sm disabled:opacity-60">{checking ? "Checking…" : "Retry connection"}</button>
     </div>
   );
 }
-
