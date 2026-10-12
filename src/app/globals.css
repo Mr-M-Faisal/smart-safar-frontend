@@ -15,20 +15,44 @@
 }
 
 * { box-sizing: border-box; }
-html { min-height: 100%; width: 100%; overflow-x: clip; scroll-behavior: smooth; }
+html {
+  height: 100%;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
 body {
-  min-height: 100vh;
+  height: 100%;
+  height: 100dvh;
   width: 100%;
   max-width: 100%;
-  overflow-x: clip;
+  overflow: hidden;
+  overscroll-behavior: none;
   margin: 0;
   background: var(--color-canvas);
   color: var(--color-ink);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+}
+p, span, h1, h2, h3, h4, li, td {
+  user-select: text;
+}
+button, a, nav, [role="button"], [role="tab"] {
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+button:active:not(:disabled), a:active, [role="button"]:active {
+  transform: scale(0.98);
+  opacity: 0.92;
 }
 button, input, select, textarea { font: inherit; }
-:focus-visible { outline: 3px solid #7185c6; outline-offset: 3px; }
+:focus-visible { outline: 2px solid #536bb7; outline-offset: 2px; }
 ::selection { background: #d8eee6; color: #142a35; }
 
 .map-grid {
@@ -101,6 +125,81 @@ button, input, select, textarea { font: inherit; }
   color: #a5f1df;
   font-weight: 600;
 }
+
+/* Mobile App Shell */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-canvas);
+}
+
+.app-bar {
+  flex-shrink: 0;
+  background-color: #111d3d;
+  color: #ffffff;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.app-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.app-bottom-nav {
+  flex-shrink: 0;
+  background-color: #111d3d;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Native Mobile Bottom Sheet */
+.bottom-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 17, 36, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  animation: fade-in 200ms ease-out;
+}
+
+.bottom-sheet-content {
+  background: #ffffff;
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+  animation: slide-up 240ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.bottom-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 9999px;
+  background-color: #cbd5e1;
+  margin: 10px auto 14px auto;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
 
 .ss-leaflet-marker { background: transparent; border: 0; }
 .ss-bus-pin {

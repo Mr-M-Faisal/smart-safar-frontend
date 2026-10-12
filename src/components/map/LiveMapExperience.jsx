@@ -344,43 +344,129 @@ export default function LiveMapExperience() {
   }
 
   return (
-    <main className="min-w-0 overflow-x-clip bg-[#f4f5fb] px-4 py-8 text-[#25304f] sm:px-8 sm:py-12 lg:px-12">
-      <div className="mx-auto w-full max-w-[1440px] min-w-0">
-        <RevealOnScroll>
-          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#536bb7]">Faisalabad · transit network</p><h1 className="mt-3 break-words text-3xl font-semibold tracking-[-.04em] text-[#25304f] sm:text-4xl lg:text-5xl">Track buses around the city.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-[#68738e] sm:text-base">Choose a route to see its stops and buses on the map.</p></div>
-          <RoutePicker routes={routes} value={routeId} onChange={(nextRouteId) => { setRouteId(nextRouteId); setSelectedBusId(null); saveBookingSelection({ routeId: nextRouteId, busId: "" }); }} />
-        </RevealOnScroll>
+    <div className="relative h-full w-full overflow-hidden bg-slate-100">
+      {/* Fullscreen Map under app bar */}
+      <div className="absolute inset-0 z-0">
+        <BusMap
+          routeId={routeId}
+          stops={stops}
+          buses={visibleBuses}
+          selectedBusId={selectedBus?._id}
+          onSelectBus={(id) => {
+            setSelectedBusId(id);
+            saveBookingSelection({ routeId, busId: id });
+          }}
+          mapController={mapController}
+        />
+      </div>
 
-        <div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : dataSource === "saved" ? "bg-slate-100 text-slate-700" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : dataSource === "saved" ? "bg-slate-500" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo mode · simulated locations" : dataSource === "saved" ? "Saved data · offline mode" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : "Transit data connected · waiting for GPS"}</span>
-          {selectedRoute && <span className="max-w-full truncate rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#68738e]">{selectedRoute.startPoint} <span className="px-1 text-[#20a992]">→</span> {selectedRoute.endPoint}</span>}
+      {/* Floating Top Control Pills */}
+      <div className="absolute inset-x-3 top-3 z-10 flex flex-col gap-2 pointer-events-none">
+        <div className="flex items-center justify-between gap-2 pointer-events-auto">
+          {/* Route selector dropdown */}
+          <div className="flex-1 max-w-xs">
+            <select
+              value={routeId}
+              onChange={(e) => {
+                const nextRouteId = e.target.value;
+                setRouteId(nextRouteId);
+                setSelectedBusId(null);
+                saveBookingSelection({ routeId: nextRouteId, busId: "" });
+              }}
+              className="h-10 w-full rounded-xl border border-slate-200/90 bg-white/95 px-3 text-xs font-bold text-[#111d3d] shadow-md backdrop-blur-md focus:outline-none"
+            >
+              {routes.map((r) => (
+                <option key={r._id} value={r._id}>
+                  {r.routeName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Locate me button */}
+          <button
+            onClick={locateMe}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200/90 bg-white/95 text-[#536bb7] shadow-md backdrop-blur-md active:scale-90"
+            aria-label="Locate me"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4.5 w-4.5">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+            </svg>
+          </button>
         </div>
 
-        <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(310px,.85fr)]">
-          <section className="min-w-0 rounded-[1.75rem] border border-white bg-white p-2.5 shadow-[0_16px_42px_rgba(53,67,112,.1)] sm:p-3" aria-label="Bus map">
-            <div className="relative h-[42svh] min-h-[280px] max-h-[430px] w-full min-w-0 overflow-hidden rounded-[1.4rem] bg-[#e6e9f4] sm:h-[48svh] sm:min-h-[340px] sm:max-h-[520px] lg:h-[60vh] lg:min-h-[420px] lg:max-h-[650px]">
-              <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={(id) => { setSelectedBusId(id); saveBookingSelection({ routeId, busId: id }); }} mapController={mapController}/>
-              <button onClick={locateMe} className="absolute left-3 top-3 z-[500] inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/80 bg-white/95 px-3.5 text-xs font-semibold text-[#465a9c] shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" aria-label="Show my current location"><span aria-hidden="true">◎</span><span className="hidden sm:inline">My location</span></button>
-              <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap gap-2 rounded-xl border border-white/80 bg-white/95 px-3 py-2 text-[10px] font-semibold text-[#596681] shadow-md backdrop-blur"><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#20bba5]"/>Bus</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#7185c6]"/>Stop</span></div>
-            </div>
-            {mapMessage && <p role="status" className="px-3 pt-3 text-xs text-[#68738e]">{mapMessage}</p>}
-          </section>
-
-          <aside className="min-w-0 rounded-[1.75rem] border border-white bg-[#e9ebf8] p-4 shadow-[0_16px_42px_rgba(53,67,112,.09)] sm:p-5">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Selected route</p><h2 className="mt-2 break-words text-xl font-semibold text-[#293553]">{selectedRoute?.routeName || "Transit routes"}</h2><p className="mt-1 text-xs text-[#7b859c]">{stops.length} stops · {visibleBuses.length} buses</p></div><span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-[#536bb7] shadow-sm" aria-hidden="true">⌖</span></div>
-
-            <div className="mt-5 rounded-2xl border border-white/90 bg-[#fffdf8] p-4 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-[.13em] text-[#68738e]">Bus details</h3>
-              {selectedBus ? <><div className="mt-3 flex items-center justify-between gap-3"><p className="text-lg font-bold text-[#293553]">{selectedBus.busNumber || "Transit bus"}</p><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${selectedBus.status === "active" ? "bg-[#e4f8f0] text-[#18846f]" : "bg-[#eef0fa] text-[#687697]"}`}>{displayStatus(selectedBus.status)}</span></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Seats free</p><p className="mt-1 text-base font-bold text-[#34405d]">{selectedBus.availableSeats ?? "—"}<span className="text-xs font-medium text-[#7b859c]">{selectedBus.capacity != null ? ` / ${selectedBus.capacity}` : ""}</span></p></div><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Next stop</p><p className="mt-1 truncate text-sm font-bold text-[#34405d]">{selectedBus.nextStop?.stopName || selectedBus.nextStop || "Awaiting update"}</p></div></div><p className="mt-3 text-xs text-[#7b859c]">{selectedBus.etaMinutes != null ? `Estimated arrival · ${Math.round(selectedBus.etaMinutes)} min` : dataSource === "demo" ? "Sample position updates every few seconds" : selectedBus.lastLocationUpdate ? `Updated ${new Date(selectedBus.lastLocationUpdate).toLocaleTimeString()}` : "Waiting for the driver's GPS update"}</p></> : <p className="mt-3 text-sm leading-6 text-[#7b859c]">No bus with a current GPS location is available on this route yet.</p>}
-            </div>
-
-            <div className="mt-5"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#394562]">Buses on this route</h3><span className="text-xs text-[#7b859c]">{matchingBuses.length}</span></div><label className="mt-3 flex items-center gap-2 rounded-xl border border-white/90 bg-white px-3 py-2.5"><span className="text-sm text-[#8290b0]" aria-hidden="true">⌕</span><span className="sr-only">Search buses</span><input value={busQuery} onChange={(event) => setBusQuery(event.target.value)} placeholder="Find a bus" className="min-w-0 flex-1 bg-transparent text-xs text-[#34405d] outline-none placeholder:text-[#9aa3b7]"/></label>
-              <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">{matchingBuses.map((bus) => <button key={bus._id || bus.busNumber} onClick={() => setSelectedBusId(bus._id)} aria-pressed={String(bus._id) === String(selectedBus?._id)} className={`flex min-h-[62px] w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${String(bus._id) === String(selectedBus?._id) ? "border-[#b8c5ee] bg-white shadow-sm" : "border-white/70 bg-white/55 hover:bg-white"}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#34405d]">{bus.busNumber || "Transit bus"}</span><span className="mt-1 block truncate text-[11px] text-[#7b859c]">{bus.nextStop?.stopName || bus.nextStop || displayStatus(bus.status)}</span></span><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${bus.status === "active" ? "bg-[#20bba5]" : bus.status === "maintenance" ? "bg-[#f39a55]" : "bg-[#98a2ba]"}`} aria-label={displayStatus(bus.status)}/></button>)}{matchingBuses.length === 0 && <p className="rounded-xl bg-white/70 p-4 text-xs leading-5 text-[#7b859c]">No buses match this search.</p>}</div>
-            </div>
-            <p className="mt-4 text-[10px] leading-4 text-[#808aa1]">{dataSource === "demo" ? "Demo locations are approximate and simulated for this prototype." : "Bus markers update from the Smart Safar location service."}</p>
-          </aside>
+        {/* Live indicator chip */}
+        <div className="self-start pointer-events-auto">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold shadow-xs backdrop-blur-md ${
+            realtimeStatus === "live"
+              ? "bg-emerald-500/90 text-white"
+              : dataSource === "saved"
+              ? "bg-slate-700/80 text-white"
+              : "bg-amber-500/90 text-white"
+          }`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+            {realtimeStatus === "live" ? "Live tracking" : dataSource === "saved" ? "Offline cache" : "Simulated"}
+          </span>
         </div>
       </div>
-    </main>
+
+      {/* Floating Bottom Sheet for Selected Bus & Route */}
+      <div className="absolute inset-x-0 bottom-0 z-20 pointer-events-none">
+        <div className="mx-auto max-w-lg rounded-t-2xl border-t border-slate-200 bg-white/98 p-4 shadow-xl backdrop-blur-md pointer-events-auto">
+          <div className="bottom-sheet-handle !my-1" />
+
+          {selectedBus ? (
+            <div className="flex flex-col gap-2.5 pt-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-bold text-[#111d3d]">{selectedBus.busNumber || "Transit bus"}</span>
+                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      {displayStatus(selectedBus.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {selectedRoute?.routeName || "Route in service"}
+                  </p>
+                </div>
+                <Link
+                  href={`/passenger?route=${encodeURIComponent(routeId)}&bus=${encodeURIComponent(selectedBus._id)}#booking`}
+                  className="rounded-xl bg-[#536bb7] px-3.5 py-2 text-xs font-bold text-white shadow-xs active:bg-[#43599f]"
+                >
+                  Book this bus
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl bg-slate-50 p-2">
+                  <span className="block text-[9px] font-bold uppercase text-slate-400">Seats Free</span>
+                  <span className="text-xs font-bold text-[#111d3d]">
+                    {selectedBus.availableSeats ?? "—"}{selectedBus.capacity != null ? ` / ${selectedBus.capacity}` : ""}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-2">
+                  <span className="block text-[9px] font-bold uppercase text-slate-400">Next Stop</span>
+                  <span className="text-xs font-bold text-[#111d3d] truncate block">
+                    {selectedBus.nextStop?.stopName || selectedBus.nextStop || "Clock Tower"}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-2">
+                  <span className="block text-[9px] font-bold uppercase text-slate-400">ETA</span>
+                  <span className="text-xs font-bold text-[#536bb7]">
+                    {selectedBus.etaMinutes != null ? `${Math.round(selectedBus.etaMinutes)} min` : "Nearby"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-2 text-center text-xs text-slate-500">
+              Tap a bus marker on the map to view live seats and ETA.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
+

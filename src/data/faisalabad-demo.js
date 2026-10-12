@@ -1,4 +1,3 @@
-// Illustrative local-only data. These routes and buses are not live schedules.
 export const FAISALABAD_CENTER = [31.4181, 73.0776];
 
 // Approximate demo map points for the prototype. They are not official bus-stop coordinates.

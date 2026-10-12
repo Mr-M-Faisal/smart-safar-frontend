@@ -26,46 +26,93 @@ export default function RoleLayout({ role, title, links = [], children }) {
   }
 
   return (
-    <div className={`role-layout min-h-screen min-w-0 bg-canvas lg:grid ${isDriver ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-[250px_minmax(0,1fr)]"}`}>
-      <aside className={`sticky top-0 z-[1100] flex min-w-0 flex-col p-4 lg:h-screen lg:overflow-y-auto lg:p-6 ${isDriver ? "driver-sidebar" : "border-b border-slate-200 bg-white/95 shadow-[0_8px_22px_rgba(44,58,105,.07)] backdrop-blur-xl lg:border-b-0 lg:border-r lg:shadow-none"}`}>
-        <Link href="/" className={`relative z-10 inline-flex w-fit items-center gap-2 text-sm font-bold ${isDriver ? "driver-brand" : "text-ink"}`}>
-          <BrandMark size="sm" tone={isDriver ? "dark" : "light"} />
-          <span>Smart Safar <span className={`ml-1 font-medium ${isDriver ? "driver-brand-role" : "text-slate-500"}`}>/ {role}</span></span>
-        </Link>
+    <div className="app-shell">
+      {/* Top App Bar */}
+      <header className="app-bar border-b border-white/10 shadow-sm z-30">
+        <div className="flex h-13 items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2 active:opacity-80">
+            <BrandMark size="sm" tone="dark" />
+            <div>
+              <span className="block text-sm font-bold tracking-tight text-white leading-tight">Smart Safar</span>
+              <span className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-[#a5f1df] leading-none">{role}</span>
+            </div>
+          </Link>
+          <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">
+            {title}
+          </span>
+        </div>
+      </header>
 
-        {isDriver && <div className="driver-sidebar-intro relative z-10 mt-8 hidden lg:block">
-          <p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#9feedd]">Faisalabad transit</p>
-          <h2 className="mt-2 text-lg font-semibold tracking-tight text-white">On the move.</h2>
-          <p className="mt-1 text-xs leading-5 text-white/65">Your route and shift tools, all in one place.</p>
-        </div>}
-
-        <p className={`relative z-10 mb-2 mt-5 px-2 text-[9px] font-bold uppercase tracking-[.2em] ${isDriver ? "driver-sidebar-label lg:mt-9" : "text-[#9aa4ba] lg:mt-8"}`}>Workspace menu</p>
-        <nav className={`relative z-10 flex gap-2 overflow-x-auto pb-1 lg:flex-col ${isDriver ? "driver-nav" : ""}`} aria-label={`${role} navigation`}>
-          {links.map(({ label, href }, index) => {
+      {/* Role Sub-Navigation Tabs */}
+      {links.length > 0 && (
+        <nav aria-label={`${role} tabs`} className="flex-shrink-0 border-b border-slate-200 bg-white px-3 py-1.5 overflow-x-auto no-scrollbar flex gap-1.5 z-20">
+          {links.map(({ label, href }) => {
             const NavLink = isAdmin ? "a" : Link;
             const isActive = linkIsActive(href);
-            return <NavLink key={href} href={href} aria-current={isActive ? "page" : undefined} className={`group inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2.5 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 sm:text-sm lg:w-full ${isDriver ? `driver-nav-link ${isActive ? "is-active" : ""}` : `${isActive ? "border-[#d6def8] bg-gradient-to-r from-[#e9edff] to-[#f4f6fc] text-[#405ba7] shadow-sm" : "border-transparent text-slate-600 hover:border-[#e4e9f7] hover:bg-[#f7f8fc] hover:text-[#405ba7]"} hover:shadow-sm`}`}>
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[9px] font-bold transition ${isDriver ? "driver-nav-index" : isActive ? "bg-[#536bb7] text-white" : "bg-[#f0f2fa] text-[#7381a4] group-hover:bg-[#e9edff] group-hover:text-[#536bb7]"}`}>{String(index + 1).padStart(2, "0")}</span>
-              {label}
-              {isDriver && <span className="driver-nav-arrow ml-auto" aria-hidden="true">→</span>}
-            </NavLink>;
+            return (
+              <NavLink
+                key={href}
+                href={href}
+                aria-current={isActive ? "page" : undefined}
+                className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                  isActive
+                    ? "bg-[#536bb7] text-white shadow-2xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                }`}
+              >
+                {label}
+              </NavLink>
+            );
           })}
         </nav>
+      )}
 
-        {isDriver && <div className="driver-sidebar-footer relative z-10 mt-auto hidden lg:block">
-          <span className="driver-sidebar-pulse" aria-hidden="true" />
-          <p className="text-xs font-semibold text-white">Driver workspace</p>
-          <p className="mt-1 text-[10px] leading-4 text-white/60">Your shift status and assigned bus are ready to manage.</p>
-          <span className="mt-4 block border-t border-white/15 pt-3 text-[9px] font-bold uppercase tracking-[.18em] text-white/45">Smart Safar · Faisalabad</span>
-        </div>}
-      </aside>
-      <main className="workspace-theme min-w-0 p-4 sm:p-8 lg:p-10">
-        <header className="mb-8">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-transit-700">{role} workspace</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{title}</h1>
-        </header>
+      {/* Scrollable Content */}
+      <main className="app-content p-4 max-w-lg mx-auto w-full pb-8">
         {children}
       </main>
+
+      {/* Edge-to-edge Bottom Nav Bar */}
+      <nav aria-label="Mobile navigation" className="app-bottom-nav z-30">
+        <div className="grid grid-cols-4 h-14">
+          <Link
+            href="/"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-white/60 active:scale-95"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5 stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m3.5 10 8.5-7 8.5 7v9a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19v-9Z"/><path d="M9 20.5v-7h6v7"/>
+            </svg>
+            <span className="tracking-tight">Home</span>
+          </Link>
+          <Link
+            href="/live-map"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-white/60 active:scale-95"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5 stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Z"/><path d="M8.5 4v13.5M15.5 6.5V20"/>
+            </svg>
+            <span className="tracking-tight">Live map</span>
+          </Link>
+          <Link
+            href="/routes"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-white/60 active:scale-95"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5 stroke-current" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 4h14M5 10h14M5 16h14"/><circle cx="3" cy="4" r=".6" fill="currentColor"/><circle cx="3" cy="10" r=".6" fill="currentColor"/><circle cx="3" cy="16" r=".6" fill="currentColor"/>
+            </svg>
+            <span className="tracking-tight">Routes</span>
+          </Link>
+          <Link
+            href={isDriver ? "/driver" : isAdmin ? "/admin" : "/passenger"}
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-[#a5f1df] active:scale-95"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5 stroke-[#a5f1df]" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="7" r="4" /><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+            </svg>
+            <span className="tracking-tight">{role}</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   );
 }

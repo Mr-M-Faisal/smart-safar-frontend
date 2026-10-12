@@ -46,11 +46,10 @@ export default function LeafletRouteMap({
       const L = module.default || module;
       leafletRef.current = L;
       const map = L.map(containerRef.current, { zoomControl: false, preferCanvas: true, scrollWheelZoom: false })
-        .setView(FAISALABAD_CENTER, 12);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+        .setView(FAISALABAD_CENTER, 13);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>',
       }).addTo(map);
       mapRef.current = map;
       segmentLayerRef.current = L.layerGroup().addTo(map);
@@ -131,8 +130,11 @@ export default function LeafletRouteMap({
     const selectionSignature = `${pathSignature}|${selectedRouteId || "all"}`;
     if (selectionSignature !== lastPathSignature.current) {
       lastPathSignature.current = selectionSignature;
-      if (allPoints.length > 1) map.fitBounds(L.latLngBounds(allPoints), { padding: [24, 24], maxZoom: routeSegments.length > 1 ? 13 : 15 });
-      else map.setView(FAISALABAD_CENTER, 12);
+      if (allPoints.length > 1) {
+        map.fitBounds(L.latLngBounds(allPoints), { padding: [16, 16], maxZoom: 14 });
+      } else {
+        map.setView(FAISALABAD_CENTER, 13);
+      }
     }
   }, [mapReady, pathSignature, routeSegments, selectedRouteId]);
 
