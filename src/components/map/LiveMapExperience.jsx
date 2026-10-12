@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, readSavedCache } from "@/lib/api";
 import { createTransitSocket } from "@/lib/socket";
 import { demoStopsForRoute, FAISALABAD_CENTER, faisalabadDemoCoordinates, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
@@ -183,12 +183,45 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
 }
 
 export default function LiveMapExperience() {
-  const [routes, setRoutes] = useState(faisalabadDemoRoutes);
-  const [routeId, setRouteId] = useState(faisalabadDemoRoutes[0]._id);
-  const [buses, setBuses] = useState(makeDemoBuses);
-  const [stops, setStops] = useState(() => demoStopsForRoute(faisalabadDemoRoutes[0]));
-  const [dataSource, setDataSource] = useState("demo");
-  const [selectedBusId, setSelectedBusId] = useState(faisalabadDemoRoutes[0].buses[0]._id);
+  const [routes, setRoutes] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data;
+    }
+    return faisalabadDemoRoutes;
+  });
+  const [routeId, setRouteId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data[0]._id;
+    }
+    return faisalabadDemoRoutes[0]._id;
+  });
+  const [buses, setBuses] = useState(() => {
+    if (typeof window !== "undefined") {
+      const savedBuses = readSavedCache("/buses");
+      if (savedBuses?.data && Array.isArray(savedBuses.data) && savedBuses.data.length) return savedBuses.data;
+    }
+    return makeDemoBuses();
+  });
+  const [stops, setStops] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
+        const savedStops = readSavedCache(`/stops/route/${saved.data[0]._id}`);
+        if (savedStops?.data && Array.isArray(savedStops.data) && savedStops.data.length) return savedStops.data;
+      }
+    }
+    return demoStopsForRoute(faisalabadDemoRoutes[0]);
+  });
+  const [dataSource, setDataSource] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return "saved";
+    }
+    return "demo";
+  });
+  const [selectedBusId, setSelectedBusId] = useState(() => faisalabadDemoRoutes[0].buses[0]._id);
   const [realtimeStatus, setRealtimeStatus] = useState("demo");
   const [busQuery, setBusQuery] = useState("");
   const [mapMessage, setMapMessage] = useState("");
@@ -211,9 +244,23 @@ export default function LiveMapExperience() {
       setRouteId((current) => liveRoutes.some((route) => String(route._id) === String(initialRoute || current)) ? (initialRoute || current) : liveRoutes[0]._id);
       setBuses(liveBuses);
       setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(initialBus || current)) ? (initialBus || current) : liveBuses[0]?._id || null);
-      setDataSource("backend");
-      setRealtimeStatus("connecting");
-    }).catch(() => {});
+      setDataSource(typeof navigator !== "undefined" && !navigator.onLine ? "saved" : "backend");
+      setRealtimeStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "connecting");
+    }).catch(() => {
+      if (!active) return;
+      const savedRoutes = readSavedCache("/routes");
+      if (savedRoutes?.data && Array.isArray(savedRoutes.data) && savedRoutes.data.length) {
+        const liveRoutes = savedRoutes.data;
+        setRoutes(liveRoutes);
+        setRouteId((current) => liveRoutes.some((route) => String(route._id) === String(initialRoute || current)) ? (initialRoute || current) : liveRoutes[0]._id);
+        const savedBuses = readSavedCache("/buses");
+        const liveBuses = Array.isArray(savedBuses?.data) ? savedBuses.data : [];
+        if (liveBuses.length) setBuses(liveBuses);
+        setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(initialBus || current)) ? (initialBus || current) : liveBuses[0]?._id || null);
+        setDataSource("saved");
+        setRealtimeStatus("offline");
+      }
+    });
     return () => { active = false; };
   }, []);
 
@@ -305,7 +352,7 @@ export default function LiveMapExperience() {
         </RevealOnScroll>
 
         <div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo mode · simulated locations" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : "Transit data connected · waiting for GPS"}</span>
+          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : dataSource === "saved" ? "bg-slate-100 text-slate-700" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : dataSource === "saved" ? "bg-slate-500" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo mode · simulated locations" : dataSource === "saved" ? "Saved data · offline mode" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : "Transit data connected · waiting for GPS"}</span>
           {selectedRoute && <span className="max-w-full truncate rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#68738e]">{selectedRoute.startPoint} <span className="px-1 text-[#20a992]">→</span> {selectedRoute.endPoint}</span>}
         </div>
 

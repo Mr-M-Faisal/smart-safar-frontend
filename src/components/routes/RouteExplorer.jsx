@@ -1,13 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, readSavedCache } from "@/lib/api";
 import { demoStopsForRoute, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import BookingLink from "@/components/layout/BookingLink";
-import LeafletRouteMap from "@/components/map/LeafletRouteMap";
 import { saveBookingSelection } from "@/lib/bookingSelection";
+
+const LeafletRouteMap = dynamic(() => import("@/components/map/LeafletRouteMap"), {
+  ssr: false,
+  loading: () => <div className="h-44 w-full rounded-2xl bg-[#e6e9f4] animate-pulse sm:h-52" />,
+});
 
 function routeBusCount(route) {
   return route.buses?.length ?? null;
@@ -19,15 +24,42 @@ function busStatusLabel(status) {
 
 export default function RouteExplorer() {
   const firstDemoRoute = faisalabadDemoRoutes[0];
-  const [routes, setRoutes] = useState(faisalabadDemoRoutes);
-  const [selectedRoute, setSelectedRoute] = useState(firstDemoRoute);
-  const [stops, setStops] = useState(() => demoStopsForRoute(firstDemoRoute));
-  const [buses, setBuses] = useState(firstDemoRoute.buses);
+  const [routes, setRoutes] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data;
+    }
+    return faisalabadDemoRoutes;
+  });
+  const [selectedRoute, setSelectedRoute] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data[0];
+    }
+    return firstDemoRoute;
+  });
+  const [stops, setStops] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
+        const savedStops = readSavedCache(`/stops/route/${saved.data[0]._id}`);
+        if (savedStops?.data && Array.isArray(savedStops.data) && savedStops.data.length) return savedStops.data;
+      }
+    }
+    return demoStopsForRoute(firstDemoRoute);
+  });
+  const [buses, setBuses] = useState(() => firstDemoRoute.buses || []);
   const [query, setQuery] = useState("");
   const [routesState, setRoutesState] = useState("ready");
   const [stopsState, setStopsState] = useState("ready");
   const [busesState, setBusesState] = useState("ready");
-  const [dataSource, setDataSource] = useState("demo");
+  const [dataSource, setDataSource] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = readSavedCache("/routes");
+      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return "saved";
+    }
+    return "demo";
+  });
   const [refreshKey, setRefreshKey] = useState(0);
   const [checkingBackend, setCheckingBackend] = useState(true);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -42,7 +74,7 @@ export default function RouteExplorer() {
         if (backendRoutes.length) {
           setRoutes(backendRoutes);
           setSelectedRoute((current) => backendRoutes.find((route) => route._id === current?._id) || backendRoutes[0]);
-          setDataSource("backend");
+          setDataSource(typeof navigator !== "undefined" && !navigator.onLine ? "saved" : "backend");
         } else {
           setRoutes(faisalabadDemoRoutes);
           setSelectedRoute((current) => faisalabadDemoRoutes.find((route) => route._id === current?._id) || faisalabadDemoRoutes[0]);
@@ -53,9 +85,16 @@ export default function RouteExplorer() {
       })
       .catch(() => {
         if (!mounted) return;
-        setRoutes(faisalabadDemoRoutes);
-        setSelectedRoute((current) => faisalabadDemoRoutes.find((route) => route._id === current?._id) || faisalabadDemoRoutes[0]);
-        setDataSource("demo");
+        const saved = readSavedCache("/routes");
+        if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
+          setRoutes(saved.data);
+          setSelectedRoute((current) => saved.data.find((route) => route._id === current?._id) || saved.data[0]);
+          setDataSource("saved");
+        } else {
+          setRoutes(faisalabadDemoRoutes);
+          setSelectedRoute((current) => faisalabadDemoRoutes.find((route) => route._id === current?._id) || faisalabadDemoRoutes[0]);
+          setDataSource("demo");
+        }
         setRoutesState("ready");
         setCheckingBackend(false);
       });
@@ -126,11 +165,23 @@ export default function RouteExplorer() {
           </div>
         </RevealOnScroll>
 
-        {routesState === "loading" && <div className="mt-9 rounded-3xl border border-[#e2e5f1] bg-white p-8 text-sm text-[#68738e] shadow-sm">Loading Faisalabad routes…</div>}
+        {routesState === "loading" && (
+          <div className="mt-9 animate-pulse space-y-4 rounded-3xl border border-[#e2e5f1] bg-white p-8">
+            <div className="h-6 w-1/3 rounded-lg bg-slate-200" />
+            <div className="h-4 w-2/3 rounded-lg bg-slate-100" />
+            <div className="h-20 w-full rounded-2xl bg-slate-50" />
+          </div>
+        )}
 
         {routesState === "ready" && (
           <>
             {dataSource === "demo" && <div className="mt-8 flex flex-col justify-between gap-2 rounded-2xl border border-[#cdd7f5] bg-[#e9edff] px-5 py-4 text-sm text-[#4e608f] sm:flex-row sm:items-center"><div><span><strong className="font-semibold text-[#3d559e]">Local demo data</strong> · sample Faisalabad routes and buses for exploring the interface.</span><span className="mt-1 block text-xs text-[#7583aa] sm:ml-2 sm:mt-0 sm:inline">{checkingBackend ? "Checking server in the background…" : "Available offline"}</span></div><button disabled={checkingBackend} onClick={() => setRefreshKey((key) => key + 1)} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#536bb7] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-wait disabled:opacity-60 sm:self-auto">{checkingBackend ? "Checking…" : "Try backend again"}</button></div>}
+            {dataSource === "saved" && (
+              <div className="mt-8 flex flex-col justify-between gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-5 py-4 text-sm text-slate-700 sm:flex-row sm:items-center">
+                <div><span><strong className="font-semibold text-slate-900">Saved data</strong> · showing routes and stops saved from your last online session.</span><span className="mt-1 block text-xs text-slate-500 sm:ml-2 sm:mt-0 sm:inline">Offline mode</span></div>
+                <button disabled={checkingBackend} onClick={() => setRefreshKey((key) => key + 1)} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:shadow-md disabled:opacity-60 sm:self-auto">{checkingBackend ? "Checking…" : "Try backend again"}</button>
+              </div>
+            )}
             {dataSource === "backend" && <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-[#bfe8dd] bg-[#e8faf4] px-4 py-2 text-xs font-semibold text-[#167b6e]"><span className="h-2 w-2 rounded-full bg-[#22bfa7]"/> Connected to transit server</div>}
 
             {routes.length === 0 ? <div className="mt-8 rounded-3xl border border-[#e2e5f1] bg-white p-8 text-sm text-[#68738e]">No sample routes are available.</div> : <div className="mt-8 grid items-start gap-6 lg:grid-cols-[.95fr_1.05fr]">

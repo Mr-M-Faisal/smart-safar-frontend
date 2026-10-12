@@ -124,8 +124,12 @@ function PassengerDashboard() {
       }
     };
     refreshRouteBuses();
-    const timer = window.setInterval(refreshRouteBuses, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    const timer = window.setInterval(refreshRouteBuses, 30000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshRouteBuses();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [activeTab, bookingForm.routeId, sessionState, token, routeBusesReload]);
 
   useEffect(() => {
@@ -135,8 +139,10 @@ function PassengerDashboard() {
       try { const result = await apiRequest(`/buses/${encodeURIComponent(bookingForm.busId)}/seats`, { token }); if (active) { setSeatMap(result.seats || []); setActiveRouteBuses(current => current.map(bus => String(bus._id) === String(bookingForm.busId) ? { ...bus, availableSeats: result.available } : bus)); } }
       catch { if (active) setSeatMap([]); }
     };
-    refresh(); const timer = window.setInterval(refresh, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    refresh(); const timer = window.setInterval(refresh, 30000);
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [token, bookingForm.busId, activeTab, refreshKey]);
 
   useEffect(() => {

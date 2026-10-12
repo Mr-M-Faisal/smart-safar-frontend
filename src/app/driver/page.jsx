@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { io } from "socket.io-client";
+import { createTransitSocket } from "@/lib/socket";
 import { apiRequest } from "@/lib/api";
 import { clearSessionToken, readSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 
-const backendOrigin = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+
 
 function assignedBusId(value) {
   return typeof value === "object" && value ? value._id : value;
@@ -172,8 +172,11 @@ export default function DriverHomePage() {
 
   useEffect(() => {
     if (!token || !activeShift || pageState !== "ready") { setSeatState({ seats: [], occupied: 0, capacity: 0 }); return undefined; }
-    loadDriverSeats(); const timer = window.setInterval(loadDriverSeats, 5000);
-    return () => window.clearInterval(timer);
+    loadDriverSeats();
+    const timer = window.setInterval(loadDriverSeats, 30000);
+    const onVisibility = () => { if (document.visibilityState === "visible") loadDriverSeats(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [token, activeShift?._id, pageState, loadDriverSeats]);
 
   useEffect(() => {
@@ -200,7 +203,7 @@ export default function DriverHomePage() {
         }
       });
 
-    const socket = io(backendOrigin, { auth: { token } });
+    const socket = createTransitSocket({ auth: { token } });
     socket.on("connect", () => {
       socket.emit("watchDriverBookings", { token }, (result) => {
         if (mounted && !result?.ok) setLocationsMessage(result?.message || "Live location updates are unavailable.");
@@ -233,6 +236,8 @@ export default function DriverHomePage() {
       setLocationsState("idle");
       setLocationsMessage("Your shift ended. Passenger location access has been stopped.");
     });
+
+    socket.connect();
 
     return () => {
       mounted = false;

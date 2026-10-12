@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, readSavedCache } from "@/lib/api";
 import LeafletRouteMap from "@/components/map/LeafletRouteMap";
 import { FAISALABAD_CENTER, demoStopsForRoute, faisalabadDemoCoordinates, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
 import { saveBookingSelection } from "@/lib/bookingSelection";
@@ -17,10 +17,28 @@ function makeDemoBuses() {
 const localSegments = faisalabadDemoRoutes.map((route) => ({ routeId: route._id, routeName: route.routeName, stops: demoStopsForRoute(route) }));
 
 export default function HomeRouteMap() {
-  const [segments, setSegments] = useState(localSegments);
+  const [segments, setSegments] = useState(() => {
+    if (typeof window !== "undefined") {
+      const savedRoutes = readSavedCache("/routes");
+      if (savedRoutes?.data?.length) {
+        const mapped = savedRoutes.data.map((route) => {
+          const savedStops = readSavedCache(`/stops/route/${route._id}`);
+          return { routeId: route._id, routeName: route.routeName, stops: Array.isArray(savedStops?.data) ? savedStops.data : [] };
+        }).filter((r) => r.stops.length > 0);
+        if (mapped.length > 0) return mapped;
+      }
+    }
+    return localSegments;
+  });
   const [buses, setBuses] = useState(makeDemoBuses);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
-  const [source, setSource] = useState("demo");
+  const [source, setSource] = useState(() => {
+    if (typeof window !== "undefined") {
+      const savedRoutes = readSavedCache("/routes");
+      if (savedRoutes?.data?.length) return "saved";
+    }
+    return "demo";
+  });
   const [mapVisible, setMapVisible] = useState(false);
   const mapContainerRef = useRef(null);
 
@@ -61,9 +79,20 @@ export default function HomeRouteMap() {
         setSegments(mappedRoutes.filter((route) => route.stops.length));
         setBuses(liveBuses);
         setSelectedRouteId(null);
-        setSource("backend");
+        setSource(typeof navigator !== "undefined" && !navigator.onLine ? "saved" : "backend");
       } catch {
-        // Keep local Faisalabad examples visible when the backend is unavailable.
+        const savedRoutes = readSavedCache("/routes");
+        if (savedRoutes?.data?.length) {
+          const mapped = savedRoutes.data.map((route) => {
+            const savedStops = readSavedCache(`/stops/route/${route._id}`);
+            return { routeId: route._id, routeName: route.routeName, stops: Array.isArray(savedStops?.data) ? savedStops.data : [] };
+          }).filter((r) => r.stops.length > 0);
+          if (mapped.length > 0) {
+            setSegments(mapped);
+            setBuses([]);
+            setSource("saved");
+          }
+        }
       }
     }
     loadNetwork();
@@ -87,8 +116,8 @@ export default function HomeRouteMap() {
         </div>
       </div>
       <div className="pointer-events-none absolute bottom-5 left-5 z-10 flex max-w-[calc(100%-2.5rem)] flex-wrap items-center gap-2 rounded-xl border border-white/80 bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#58647f] shadow-md backdrop-blur sm:bottom-6 sm:left-6">
-        <span className={`h-2 w-2 rounded-full ${source === "backend" ? "bg-[#20bba5]" : "bg-[#e49353]"}`} />
-        {selectedRouteName || (source === "backend" ? `${segments.length} routes · transit data` : `${segments.length} routes · demo preview`)}
+        <span className={`h-2 w-2 rounded-full ${source === "backend" ? "bg-[#20bba5]" : source === "saved" ? "bg-[#64748b]" : "bg-[#e49353]"}`} />
+        {selectedRouteName || (source === "backend" ? `${segments.length} routes · transit data` : source === "saved" ? `${segments.length} routes · saved data` : `${segments.length} routes · demo preview`)}
       </div>
     </>
   );

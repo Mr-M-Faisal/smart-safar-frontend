@@ -20,11 +20,56 @@ export class ApiError extends Error {
   }
 }
 
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+export function isEligibleForCache(path) {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return (
+    normalized.startsWith("/routes") ||
+    normalized.startsWith("/stops/route/") ||
+    normalized.startsWith("/buses")
+  );
+}
+
+export function readSavedCache(path) {
+  if (typeof window === "undefined" || !window.localStorage) return null;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  try {
+    const raw = localStorage.getItem(`smart-safar:cache:${normalized}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.timestamp || !parsed.data) return null;
+    if (Date.now() - parsed.timestamp > CACHE_MAX_AGE_MS) {
+      localStorage.removeItem(`smart-safar:cache:${normalized}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSavedCache(path, data) {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  try {
+    localStorage.setItem(
+      `smart-safar:cache:${normalized}`,
+      JSON.stringify({ timestamp: Date.now(), data })
+    );
+  } catch (_e) {
+    // ignore quota errors
+  }
+}
+
 async function rawRequest(path, options, token) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const isGet = !options.method || options.method.toUpperCase() === "GET";
+  const canCache = !token && isGet && isEligibleForCache(normalizedPath);
 
   let response;
   const controller = new AbortController();
@@ -32,6 +77,15 @@ async function rawRequest(path, options, token) {
   try {
     response = await fetch(`${serverOrigin}/api${normalizedPath}`, { ...options, headers, cache: "no-store", signal: controller.signal });
   } catch (error) {
+    if (canCache) {
+      const cached = readSavedCache(normalizedPath);
+      if (cached) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("smart-safar:stale-data", { detail: { path: normalizedPath, timestamp: cached.timestamp } }));
+        }
+        return { response: { ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }) }, payload: cached.data };
+      }
+    }
     throw new ApiError("Could not reach the transit server. Check the connection and try again.", 0, error);
   } finally {
     clearTimeout(timeoutId);
@@ -40,6 +94,19 @@ async function rawRequest(path, options, token) {
   const contentType = response.headers.get("content-type") || "";
   let payload = null;
   if (contentType.includes("application/json")) { try { payload = await response.json(); } catch { payload = null; } }
+
+  if (response.ok && payload && canCache) {
+    writeSavedCache(normalizedPath, payload);
+  } else if (!response.ok && canCache && response.status >= 500) {
+    const cached = readSavedCache(normalizedPath);
+    if (cached) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("smart-safar:stale-data", { detail: { path: normalizedPath, timestamp: cached.timestamp } }));
+      }
+      return { response: { ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }) }, payload: cached.data };
+    }
+  }
+
   return { response, payload };
 }
 

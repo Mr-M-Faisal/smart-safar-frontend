@@ -3,19 +3,36 @@
 import { useEffect, useState } from "react";
 import BrandMark from "@/components/layout/BrandMark";
 
-export default function BootSplash() {
-  const [hydrated, setHydrated] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+const SESSION_KEY = "smart-safar:boot-splash-seen";
 
-  useEffect(() => setHydrated(true), []);
+export default function BootSplash() {
+  const [mounted, setMounted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (!hydrated) return undefined;
-    const timeout = window.setTimeout(() => setDismissed(true), 380);
-    return () => window.clearTimeout(timeout);
-  }, [hydrated]);
+    try {
+      if (sessionStorage.getItem(SESSION_KEY)) {
+        return;
+      }
+      sessionStorage.setItem(SESSION_KEY, "true");
+    } catch {
+      // In case sessionStorage is blocked or unavailable
+    }
 
-  if (dismissed) return null;
+    setMounted(true);
+    // Start fading out after 200ms
+    const fadeTimer = window.setTimeout(() => setHydrated(true), 200);
+    // Completely unmount after 450ms (total visible time <= 500ms)
+    const removeTimer = window.setTimeout(() => setMounted(false), 450);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, []);
+
+  if (!mounted) return null;
+
   return (
     <div aria-hidden="true" className={`boot-splash${hydrated ? " is-hydrated" : ""}`}>
       <div className="boot-splash-brand">

@@ -3,9 +3,12 @@
   "name": "Smart Safar",
   "short_name": "Smart Safar",
   "description": "Explore Faisalabad transit routes, bus updates, and your journey.",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "lang": "en",
   "background_color": "#111d3d",
   "theme_color": "#111d3d",
   "icons": [

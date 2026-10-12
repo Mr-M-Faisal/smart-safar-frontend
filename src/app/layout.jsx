@@ -2,6 +2,7 @@ import "./globals.css";
 import "leaflet/dist/leaflet.css";
 import BootSplash from "@/components/layout/BootSplash";
 import { ThemeBootstrap } from "@/components/layout/ProfileMenu";
+import ServiceWorkerRegister from "@/components/layout/ServiceWorkerRegister";
 
 export const metadata = {
   title: "Smart Safar | Faisalabad Transit",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" />
       </head>
       <body>
+        <ServiceWorkerRegister />
         <BootSplash />
         <ThemeBootstrap />
         {children}

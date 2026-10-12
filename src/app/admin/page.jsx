@@ -167,8 +167,10 @@ export default function AdminHomePage() {
         if (active) setDataErrors(current => [...current.filter(item => item.key !== "live operating state"), { key: "live operating state", message: error.message }]);
       }
     };
-    const timer = window.setInterval(pollOperatingState, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    const timer = window.setInterval(pollOperatingState, 30000);
+    const onVisibility = () => { if (document.visibilityState === "visible") pollOperatingState(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [activeTab, sessionState, token]);
   async function mutate(action, successText) {
     if (!token || busy) return false;
