@@ -29,7 +29,8 @@ export default function LeafletRouteMap({
   const containerRef = useRef(null);
   const leafletRef = useRef(null);
   const mapRef = useRef(null);
-  const layerRef = useRef(null);
+  const segmentLayerRef = useRef(null);
+  const busLayerRef = useRef(null);
   const routeSelectRef = useRef(onSelectRoute);
   const busSelectRef = useRef(onSelectBus);
   const [mapReady, setMapReady] = useState(false);
@@ -52,7 +53,8 @@ export default function LeafletRouteMap({
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
       }).addTo(map);
       mapRef.current = map;
-      layerRef.current = L.layerGroup().addTo(map);
+      segmentLayerRef.current = L.layerGroup().addTo(map);
+      busLayerRef.current = L.layerGroup().addTo(map);
       if (mapController) mapController.current = map;
       setMapReady(true);
 
@@ -72,7 +74,8 @@ export default function LeafletRouteMap({
       if (resizeHandler) window.removeEventListener("resize", resizeHandler);
       mapRef.current?.remove();
       mapRef.current = null;
-      layerRef.current = null;
+      segmentLayerRef.current = null;
+      busLayerRef.current = null;
       leafletRef.current = null;
       if (mapController) mapController.current = null;
       setMapReady(false);
@@ -85,9 +88,9 @@ export default function LeafletRouteMap({
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    const layer = layerRef.current;
-    if (!mapReady || !L || !map || !layer) return;
-    layer.clearLayers();
+    const segmentLayer = segmentLayerRef.current;
+    if (!mapReady || !L || !map || !segmentLayer) return;
+    segmentLayer.clearLayers();
     const allPoints = [];
 
     routeSegments.forEach((segment, segmentIndex) => {
@@ -106,7 +109,7 @@ export default function LeafletRouteMap({
           lineCap: "round",
           lineJoin: "round",
           ...(isSelected ? {} : { dashArray: "7 8" }),
-        }).addTo(layer);
+        }).addTo(segmentLayer);
         if (routeSelectRef.current) {
           line.on("click", () => routeSelectRef.current(routeId));
           line.bindTooltip(safeTooltip(segment.routeName || "Transit route"), { sticky: true });
@@ -121,9 +124,23 @@ export default function LeafletRouteMap({
           weight: 2,
           fillColor: color,
           fillOpacity: isSelected ? 0.98 : 0.74,
-        }).bindTooltip(safeTooltip(stop.stopName), { direction: "top", offset: [0, -5] }).addTo(layer);
+        }).bindTooltip(safeTooltip(stop.stopName), { direction: "top", offset: [0, -5] }).addTo(segmentLayer);
       });
     });
+
+    const selectionSignature = `${pathSignature}|${selectedRouteId || "all"}`;
+    if (selectionSignature !== lastPathSignature.current) {
+      lastPathSignature.current = selectionSignature;
+      if (allPoints.length > 1) map.fitBounds(L.latLngBounds(allPoints), { padding: [24, 24], maxZoom: routeSegments.length > 1 ? 13 : 15 });
+      else map.setView(FAISALABAD_CENTER, 12);
+    }
+  }, [mapReady, pathSignature, routeSegments, selectedRouteId]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const busLayer = busLayerRef.current;
+    if (!mapReady || !L || !busLayer) return;
+    busLayer.clearLayers();
 
     buses.forEach((bus) => {
       if (!isCoordinate(bus.currentLocation?.latitude, bus.currentLocation?.longitude)) return;
@@ -139,19 +156,11 @@ export default function LeafletRouteMap({
         icon,
         keyboard: true,
         title: bus.busNumber || "Transit bus",
-      }).addTo(layer);
+      }).addTo(busLayer);
       marker.bindTooltip(safeTooltip(bus.busNumber || "Transit bus"), { direction: "top", offset: [0, -17] });
       if (busSelectRef.current) marker.on("click", () => busSelectRef.current(bus._id));
-      allPoints.push([Number(bus.currentLocation.latitude), Number(bus.currentLocation.longitude)]);
     });
-
-    const selectionSignature = `${pathSignature}|${selectedRouteId || "all"}`;
-    if (selectionSignature !== lastPathSignature.current) {
-      lastPathSignature.current = selectionSignature;
-      if (allPoints.length > 1) map.fitBounds(L.latLngBounds(allPoints), { padding: [24, 24], maxZoom: routeSegments.length > 1 ? 13 : 15 });
-      else map.setView(FAISALABAD_CENTER, 12);
-    }
-  }, [mapReady, pathSignature, routeSegments, buses, selectedRouteId, selectedBusId]);
+  }, [mapReady, buses, selectedBusId]);
 
   return <div ref={containerRef} className={`leaflet-route-map h-full w-full rounded-[inherit] bg-[#e6e9f4] ${className}`} role="application" aria-label={ariaLabel} />;
 }

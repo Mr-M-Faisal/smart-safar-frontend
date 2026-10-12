@@ -67,7 +67,8 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
   const mapElement = useRef(null);
   const leafletRef = useRef(null);
   const mapRef = useRef(null);
-  const layerRef = useRef(null);
+  const routeLayerRef = useRef(null);
+  const busLayerRef = useRef(null);
   const onSelectRef = useRef(onSelectBus);
   const [mapReady, setMapReady] = useState(false);
   onSelectRef.current = onSelectBus;
@@ -86,9 +87,9 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
       }).addTo(map);
-      const layers = L.layerGroup().addTo(map);
+      routeLayerRef.current = L.layerGroup().addTo(map);
+      busLayerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
-      layerRef.current = layers;
       if (mapController) mapController.current = map;
       setMapReady(true);
 
@@ -109,7 +110,8 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
-        layerRef.current = null;
+        routeLayerRef.current = null;
+        busLayerRef.current = null;
         leafletRef.current = null;
       }
       setMapReady(false);
@@ -119,27 +121,42 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
 
   const pathKey = stops.map((stop) => `${stop.stopName}:${stop.latitude}:${stop.longitude}`).join("|");
   const lastPathKey = useRef("");
+
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    const layers = layerRef.current;
-    if (!mapReady || !L || !map || !layers) return;
-    layers.clearLayers();
+    const routeLayer = routeLayerRef.current;
+    if (!mapReady || !L || !map || !routeLayer) return;
+    routeLayer.clearLayers();
 
     const routePoints = stops
       .filter((stop) => stop.latitude != null && stop.longitude != null && Number.isFinite(Number(stop.latitude)) && Number.isFinite(Number(stop.longitude)))
       .map((stop) => [Number(stop.latitude), Number(stop.longitude)]);
 
     if (routePoints.length > 1) {
-      L.polyline(routePoints, { color: "#20bba5", weight: 5, opacity: 0.88, dashArray: "8 9", lineCap: "round" }).addTo(layers);
+      L.polyline(routePoints, { color: "#20bba5", weight: 5, opacity: 0.88, dashArray: "8 9", lineCap: "round" }).addTo(routeLayer);
     }
     stops.forEach((stop, index) => {
       if (stop.latitude == null || stop.longitude == null || !Number.isFinite(Number(stop.latitude)) || !Number.isFinite(Number(stop.longitude))) return;
       L.circleMarker([Number(stop.latitude), Number(stop.longitude)], {
         radius: index === 0 || index === stops.length - 1 ? 8 : 6,
         color: "#ffffff", weight: 3, fillColor: index === 0 || index === stops.length - 1 ? "#20bba5" : "#7185c6", fillOpacity: 1,
-      }).bindTooltip(tooltipText(stop.stopName), { direction: "top", offset: [0, -6] }).addTo(layers);
+      }).bindTooltip(tooltipText(stop.stopName), { direction: "top", offset: [0, -6] }).addTo(routeLayer);
     });
+
+    const currentPathKey = `${routeId}|${pathKey}`;
+    if (currentPathKey !== lastPathKey.current) {
+      lastPathKey.current = currentPathKey;
+      if (routePoints.length > 1) map.fitBounds(L.latLngBounds(routePoints), { padding: [34, 34], maxZoom: 14 });
+      else map.setView(FAISALABAD_CENTER, 13);
+    }
+  }, [mapReady, routeId, pathKey, stops]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const busLayer = busLayerRef.current;
+    if (!mapReady || !L || !busLayer) return;
+    busLayer.clearLayers();
 
     buses.forEach((bus) => {
       const rawLatitude = bus.currentLocation?.latitude;
@@ -158,16 +175,9 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
       const marker = L.marker([latitude, longitude], { icon, keyboard: true, title: bus.busNumber || "Transit bus" });
       marker.bindTooltip(tooltipText(bus.busNumber || "Transit bus"), { direction: "top", offset: [0, -17] });
       marker.on("click", () => onSelectRef.current(bus._id));
-      marker.addTo(layers);
+      marker.addTo(busLayer);
     });
-
-    const currentPathKey = `${routeId}|${pathKey}`;
-    if (currentPathKey !== lastPathKey.current) {
-      lastPathKey.current = currentPathKey;
-      if (routePoints.length > 1) map.fitBounds(L.latLngBounds(routePoints), { padding: [34, 34], maxZoom: 14 });
-      else map.setView(FAISALABAD_CENTER, 13);
-    }
-  }, [mapReady, routeId, pathKey, stops, buses, selectedBusId]);
+  }, [mapReady, buses, selectedBusId]);
 
   return <div ref={mapElement} className="h-full w-full rounded-[1.35rem] bg-[#e6e9f4]" role="application" aria-label="Interactive Leaflet map showing Faisalabad bus routes and stops" />;
 }
