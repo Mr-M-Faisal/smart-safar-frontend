@@ -13,8 +13,25 @@ Frontend for the Smart Safar public transit tracking system.
 1. Copy `.env.example` to `.env.local`.
 2. Set `NEXT_PUBLIC_API_URL` to the backend server origin (omit `/api`).
 3. To enable Google passenger sign-in, set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to the Google Web Client ID also configured as `GOOGLE_CLIENT_ID` on the backend. See the staged backend's `GOOGLE_AUTH_SETUP.md`.
-4. Install dependencies with `pnpm install`.
-5. Start the development server with `pnpm dev`.
+4. Install dependencies with `npm ci`.
+5. Start the development server with `npm run dev`.
+
+## Commands
+
+- `npm run dev` — start the local development server.
+- `npm run test:unit` — run the frontend unit tests.
+- `npm run build` — build the production application.
+- `npm start` — serve a production build.
+
+## Environment variables
+
+| Variable | Example | Secret |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `https://api.example.com` | No; exposed in the browser |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `123456789.apps.googleusercontent.com` | No; public client ID |
+| `NEXT_PUBLIC_ENABLE_LOCAL_TEST_LOGIN` | `false` | No; development only |
+
+The production build checks `NEXT_PUBLIC_API_URL` on AWS/GitHub non-development branches and rejects missing values, HTTP URLs, and localhost addresses. The lockfile is `package-lock.json`; use npm rather than pnpm.
 
 For a local Driver/Admin walkthrough with the optional credential-free test panel, set `NEXT_PUBLIC_ENABLE_LOCAL_TEST_LOGIN=true` only after enabling `ALLOW_LOCAL_TEST_LOGIN=true` and `NODE_ENV=development` on the backend. Restart both servers after changing environment values. See the backend's `LOCAL_TESTING.md`. Do not enable this on a deployed service.
 

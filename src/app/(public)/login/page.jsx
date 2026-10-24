@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import BrandMark from "@/components/layout/BrandMark";
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, saveSessionToken } from "@/lib/session";
+import { clearSessionToken, saveSessionToken, storeCachedProfile } from "@/lib/session";
+import safeReturnTo from "@/lib/auth/safeReturnTo.cjs";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
@@ -31,14 +33,15 @@ export default function LoginPage() {
       return;
     }
     saveSessionToken(result.token, result.role, result.refreshToken);
+    storeCachedProfile(result);
     const params = new URLSearchParams(window.location.search);
     const requestedBookingRoute = params.get("bookingRoute") || params.get("route");
     const requestedBookingBus = params.get("bookingBus") || params.get("bus");
     const requestedBookingSeat = params.get("bookingSeat") || params.get("seat");
     const requestedReturnTo = params.get("returnTo");
     const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
-    const safeReturnTo = requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//") && !requestedReturnTo.startsWith("/login") ? requestedReturnTo : null;
-    router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : safeReturnTo || commuterDestination);
+    const safeDestination = safeReturnTo(requestedReturnTo, null);
+    router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : (safeDestination && !safeDestination.startsWith("/login") ? safeDestination : commuterDestination));
   }, [router]);
 
   const handleGoogleCredential = useCallback(async (credential) => {
@@ -106,7 +109,7 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -right-24 top-20 h-72 w-72 rounded-full bg-[#b7c5ed]/40 blur-3xl" />
         <div className="relative mx-auto grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/70 bg-white/25 shadow-[0_24px_70px_rgba(53,67,112,.18)] backdrop-blur-xl lg:grid-cols-[.9fr_1.1fr]">
           <section className="relative isolate flex min-h-72 flex-col justify-between overflow-hidden p-7 text-white sm:p-9 lg:min-h-[610px]">
-            <img src="/images/faisalabad-clock-tower.jpg" alt="Ghanta Ghar Clock Tower in Faisalabad at sunset" className="absolute inset-0 -z-20 h-full w-full object-cover object-center" />
+            <Image src="/images/faisalabad-clock-tower.webp" alt="Ghanta Ghar Clock Tower in Faisalabad at sunset" fill sizes="(max-width: 1024px) 100vw, 45vw" className="absolute inset-0 -z-20 object-cover object-center" />
             <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#101d3c]/95 via-[#18284e]/55 to-[#233868]/35" />
             <Link href="/" className="inline-flex w-fit items-center gap-3 text-sm font-bold"><BrandMark size="sm" tone="dark" />Smart Safar</Link>
             <div className="mt-10"><p className="text-sm font-semibold tracking-wide text-[#a8efdf] sm:text-base">Faisalabad, One Stop Closer</p><h1 className="mt-3 max-w-sm text-3xl font-semibold tracking-tight sm:text-4xl">Find your way through the city.</h1><p className="mt-4 max-w-sm text-sm leading-6 text-white/85">Explore a route first. When you are ready to reserve a seat, sign in and continue your booking.</p></div>

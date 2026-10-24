@@ -1,5 +1,6 @@
 import RoleLayout from "./RoleLayout";
+import { Suspense } from "react";
 
 export default function AdminLayout({ children }) {
-  return <RoleLayout role="Administrator" title="Operations center" links={[{ label: "Overview", href: "/admin#overview" }, { label: "Drivers & shifts", href: "/admin#drivers" }, { label: "Routes & alerts", href: "/admin#routes" }, { label: "Bookings & tickets", href: "/admin#bookings" }, { label: "Buses", href: "/admin#buses" }, { label: "Reports", href: "/admin#reports" }]}>{children}</RoleLayout>;
+  return <Suspense fallback={null}><RoleLayout role="Administrator" title="Operations center" links={[{ label: "Overview", href: "/admin?tab=overview" }, { label: "Drivers & shifts", href: "/admin?tab=drivers" }, { label: "Routes & alerts", href: "/admin?tab=routes" }, { label: "Bookings & tickets", href: "/admin?tab=bookings" }, { label: "Buses", href: "/admin?tab=buses" }, { label: "Reports", href: "/admin?tab=reports" }]}>{children}</RoleLayout></Suspense>;
 }

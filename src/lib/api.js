@@ -20,14 +20,23 @@ export class ApiError extends Error {
   }
 }
 
-const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CACHE_KEY_PREFIX = "ss-cache-v1:";
+const CACHE_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const inFlightRequests = new Map();
+const lastRevalidatedAt = new Map();
+
+function cacheTtl(path) {
+  return path.startsWith("/buses") ? 30 * 1000 : 24 * 60 * 60 * 1000;
+}
 
 export function isEligibleForCache(path) {
   const normalized = path.startsWith("/") ? path : `/${path}`;
+  const pathname = normalized.split("?", 1)[0];
   return (
-    normalized.startsWith("/routes") ||
-    normalized.startsWith("/stops/route/") ||
-    normalized.startsWith("/buses")
+    pathname === "/routes" ||
+    pathname === "/routes/overview" ||
+    pathname.startsWith("/stops/route/") ||
+    pathname === "/buses"
   );
 }
 
@@ -35,11 +44,12 @@ export function readSavedCache(path) {
   if (typeof window === "undefined" || !window.localStorage) return null;
   const normalized = path.startsWith("/") ? path : `/${path}`;
   try {
-    const raw = localStorage.getItem(`smart-safar:cache:${normalized}`);
+    const raw = localStorage.getItem(`${CACHE_KEY_PREFIX}${normalized}`) || localStorage.getItem(`smart-safar:cache:${normalized}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.timestamp || !parsed.data) return null;
-    if (Date.now() - parsed.timestamp > CACHE_MAX_AGE_MS) {
+    if (Date.now() - parsed.timestamp > cacheTtl(normalized)) {
+      localStorage.removeItem(`${CACHE_KEY_PREFIX}${normalized}`);
       localStorage.removeItem(`smart-safar:cache:${normalized}`);
       return null;
     }
@@ -53,29 +63,69 @@ export function writeSavedCache(path, data) {
   if (typeof window === "undefined" || !window.localStorage) return;
   const normalized = path.startsWith("/") ? path : `/${path}`;
   try {
-    localStorage.setItem(
-      `smart-safar:cache:${normalized}`,
-      JSON.stringify({ timestamp: Date.now(), data })
-    );
+    const storageKey = `${CACHE_KEY_PREFIX}${normalized}`;
+    const value = JSON.stringify({ timestamp: Date.now(), data });
+    localStorage.setItem(storageKey, value);
+    let totalBytes = 0;
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(CACHE_KEY_PREFIX)) continue;
+      const entry = localStorage.getItem(key) || "";
+      totalBytes += (key.length + entry.length) * 2;
+      keys.push({ key, entry, timestamp: Number(JSON.parse(entry)?.timestamp) || 0 });
+    }
+    keys.sort((left, right) => left.timestamp - right.timestamp);
+    while (totalBytes > CACHE_MAX_TOTAL_BYTES && keys.length > 1) {
+      const oldest = keys.shift();
+      totalBytes -= (oldest.key.length + oldest.entry.length) * 2;
+      if (oldest.key !== storageKey) localStorage.removeItem(oldest.key);
+    }
+    if (totalBytes > CACHE_MAX_TOTAL_BYTES && keys.length === 1 && keys[0].key === storageKey) localStorage.removeItem(storageKey);
   } catch (_e) {
     // ignore quota errors
   }
 }
 
-async function rawRequest(path, options, token) {
+async function rawRequest(path, options, token, { bypassCache = false } = {}) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const isGet = !options.method || options.method.toUpperCase() === "GET";
-  const canCache = !token && isGet && isEligibleForCache(normalizedPath);
+  const isPublicGet = !token && isGet;
+  const canCache = isPublicGet && isEligibleForCache(normalizedPath);
+  const key = isGet && !options.signal ? `${normalizedPath}\u0000${token || "guest"}` : null;
 
   let response;
+  if (canCache && !bypassCache) {
+    const cached = readSavedCache(normalizedPath);
+    if (cached) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("smart-safar:stale-data", { detail: { path: normalizedPath, timestamp: cached.timestamp } }));
+      }
+      if (!inFlightRequests.has(key) && Date.now() - (lastRevalidatedAt.get(key) || 0) >= 5000) {
+        lastRevalidatedAt.set(key, Date.now());
+        void rawRequest(path, options, token, { bypassCache: true }).then(({ response: freshResponse, payload: fresh }) => {
+          if (freshResponse.ok && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("smart-safar:cache-updated", { detail: { path: normalizedPath, data: fresh, timestamp: Date.now() } }));
+        }).catch(() => {});
+      }
+      return { response: { ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }) }, payload: cached.data };
+    }
+  }
+
+  if (key && inFlightRequests.has(key)) return inFlightRequests.get(key);
+  const request = (async () => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 7000);
+  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || 7000);
+  const abortFromCaller = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
   try {
-    response = await fetch(`${serverOrigin}/api${normalizedPath}`, { ...options, headers, cache: "no-store", signal: controller.signal });
+    const requestOptions = { ...options, headers, signal: controller.signal };
+    delete requestOptions.timeoutMs;
+    if (options.signal) delete requestOptions.signal;
+    response = await fetch(`${serverOrigin}/api${normalizedPath}`, { ...requestOptions, ...(!isPublicGet ? { cache: "no-store" } : {}) });
   } catch (error) {
     if (canCache) {
       const cached = readSavedCache(normalizedPath);
@@ -89,6 +139,7 @@ async function rawRequest(path, options, token) {
     throw new ApiError("Could not reach the transit server. Check the connection and try again.", 0, error);
   } finally {
     clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", abortFromCaller);
   }
 
   const contentType = response.headers.get("content-type") || "";
@@ -108,6 +159,17 @@ async function rawRequest(path, options, token) {
   }
 
   return { response, payload };
+  })();
+  if (key) {
+    inFlightRequests.set(key, request);
+    try {
+      const result = await request;
+      if (canCache && result.response.ok) lastRevalidatedAt.set(key, Date.now());
+      return result;
+    }
+    finally { inFlightRequests.delete(key); }
+  }
+  return request;
 }
 
 function refreshForRole(role) {
@@ -161,7 +223,7 @@ export async function getBackendStatus() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(`${serverOrigin}/`, { cache: "no-store", signal: controller.signal });
+    const response = await fetch(`${serverOrigin}/api/health`, { cache: "no-store", signal: controller.signal });
     return response.ok ? "online" : "error";
   } catch {
     return "offline";

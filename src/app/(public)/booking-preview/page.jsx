@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import usePolling from "@/lib/usePolling";
+import { subscribeBus } from "@/lib/realtime";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
+
+const SeatPicker = dynamic(() => import("@/components/booking/SeatPicker"), {
+  loading: () => <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-6" aria-label="Loading seat map">{Array.from({ length: 12 }, (_, index) => <span key={index} className="h-11 animate-pulse rounded-xl bg-[#eef1f8]" />)}</div>,
+});
 
 function displayBus(bus) { return bus?.busNumber || `Bus ${String(bus?._id || "").slice(-5)}`; }
 
@@ -35,6 +42,35 @@ export default function BookingPreviewPage() {
   const selectedRoute = useMemo(() => routes.find((route) => String(route._id) === String(routeId)), [routes, routeId]);
   const selectedBus = useMemo(() => buses.find((bus) => String(bus._id) === String(busId)), [buses, busId]);
 
+  usePolling(async () => {
+    if (!routeId) return;
+    const result = await apiRequest(`/buses/route/${encodeURIComponent(routeId)}/active`);
+    if (Array.isArray(result)) {
+      setBuses(result);
+      setBusId((current) => result.some((bus) => String(bus._id) === String(current)) ? current : result.length === 1 ? result[0]._id : "");
+    }
+  }, 30000, { enabled: Boolean(routeId) });
+  usePolling(async () => {
+    if (!busId) return;
+    const result = await apiRequest(`/buses/${encodeURIComponent(busId)}/seats`);
+    setSeats(Array.isArray(result.seats) ? result.seats : []);
+    setCapacity(Number(result.capacity) || 0);
+    setSelectedSeat((current) => current && !result.seats?.some((seat) => String(seat.seatNumber) === String(current) && seat.status === "available") ? "" : current);
+  }, 30000, { enabled: Boolean(busId) });
+
+  useEffect(() => {
+    if (!busId) return undefined;
+    return subscribeBus(busId, {
+      seatStateUpdate: (update) => {
+        setSeats(Array.isArray(update.seats) ? update.seats : []);
+        if (update.capacity != null) setCapacity(Number(update.capacity) || 0);
+        setSelectedSeat((current) => current && !update.seats?.some((seat) => String(seat.seatNumber) === String(current) && seat.status === "available") ? "" : current);
+        setSeatState("ready"); setSeatError("");
+      },
+      locationUpdate: (update) => setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, currentLocation: { latitude: update.latitude, longitude: update.longitude }, nextStop: update.nextStop, etaMinutes: update.etaMinutes, lastLocationUpdate: update.lastLocationUpdate } : bus)),
+    });
+  }, [busId]);
+
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams(window.location.search);
@@ -42,7 +78,7 @@ export default function BookingPreviewPage() {
     const requestedRoute = params.get("route") || saved.routeId || "";
     const requestedBus = params.get("bus") || saved.busId || "";
     const requestedSeat = params.get("seat") || "";
-    apiRequest("/routes").then((result) => {
+    apiRequest("/routes/overview").then((result) => {
       if (!active) return;
       const items = Array.isArray(result) ? result : [];
       setRoutes(items);
@@ -93,8 +129,7 @@ export default function BookingPreviewPage() {
       }
     };
     refresh();
-    const timer = window.setInterval(refresh, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; };
   }, [routeId, busReload]);
 
   useEffect(() => {
@@ -118,8 +153,7 @@ export default function BookingPreviewPage() {
       }
     };
     refresh();
-    const timer = window.setInterval(refresh, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => { active = false; };
   }, [busId, seatReload]);
 
   function chooseRoute(nextRouteId) {
@@ -148,7 +182,7 @@ export default function BookingPreviewPage() {
 
       <section className="mt-5 space-y-5 rounded-3xl border border-white bg-white p-5 shadow-[0_14px_38px_rgba(53,67,112,.07)] sm:p-7">
         <label className="block"><span className="text-xs font-semibold text-[#596681]">1 · Choose a route</span>
-          {routesState === "error" ? <div role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{routesError}<button type="button" onClick={() => { setRoutesState("loading"); setRoutesError(""); apiRequest("/routes").then((result) => { setRoutes(Array.isArray(result) ? result : []); setRoutesState("ready"); }).catch((error) => { setRoutesError(error.message || "Could not load routes."); setRoutesState("error"); }); }} className="ml-2 font-semibold underline">Retry</button></div> : <select disabled={routesState !== "ready"} value={routeId} onChange={(event) => chooseRoute(event.target.value)} className="mt-1.5 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-[#fbfcff] px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">{routesState === "loading" ? "Loading routes…" : "Select a route"}</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName} · {route.startPoint} to {route.endPoint}</option>)}</select>}
+          {routesState === "error" ? <div role="alert" className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{routesError}<button type="button" onClick={() => { setRoutesState("loading"); setRoutesError(""); apiRequest("/routes/overview").then((result) => { setRoutes(Array.isArray(result) ? result : []); setRoutesState("ready"); }).catch((error) => { setRoutesError(error.message || "Could not load routes."); setRoutesState("error"); }); }} className="ml-2 font-semibold underline">Retry</button></div> : <select disabled={routesState !== "ready"} value={routeId} onChange={(event) => chooseRoute(event.target.value)} className="mt-1.5 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-[#fbfcff] px-3 text-sm text-[#34405d] outline-none focus:border-[#8093d1]"><option value="">{routesState === "loading" ? "Loading routes…" : "Select a route"}</option>{routes.map((route) => <option key={route._id} value={route._id}>{route.routeName} · {route.startPoint} to {route.endPoint}</option>)}</select>}
         </label>
 
         {routeId && <div><p className="text-xs font-semibold text-[#596681]">2 · Choose an active bus</p>

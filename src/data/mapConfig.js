@@ -1,0 +1,1 @@
+export const FAISALABAD_CENTER = [31.4181, 73.0776];

@@ -1,0 +1,1 @@
+// Installed-mode prepaint logic is maintained in public/prepaint.js.

@@ -1,6 +1,7 @@
 const TOKEN_KEY = "smart-safar-token";
 const REFRESH_KEY = `${TOKEN_KEY}:refresh`;
 const ACTIVE_ROLE_KEY = `${TOKEN_KEY}:active-role`;
+const PROFILE_CACHE_KEY = "ss-profile";
 const ROLES = new Set(["commuter", "driver", "admin"]);
 
 function roleTokenKey(role) {
@@ -8,16 +9,40 @@ function roleTokenKey(role) {
 }
 function roleRefreshKey(role) { return `${REFRESH_KEY}:${role || "default"}`; }
 
+function clearPersonalCache() {
+  if (typeof window === "undefined") return;
+  for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith("ss-personal-cache:") || key?.startsWith("smart-safar:cache:personal:")) window.localStorage.removeItem(key);
+  }
+}
+
 export function saveSessionToken(token, role, refreshToken = null) {
   if (typeof window === "undefined") return;
   if (ROLES.has(role)) {
     window.localStorage.setItem(roleTokenKey(role), token);
     if (refreshToken) window.localStorage.setItem(roleRefreshKey(role), refreshToken);
     window.localStorage.setItem(ACTIVE_ROLE_KEY, role);
+    window.dispatchEvent(new CustomEvent("smart-safar:session-changed"));
     return;
   }
   window.localStorage.setItem(TOKEN_KEY, token);
   if (refreshToken) window.localStorage.setItem(roleRefreshKey("default"), refreshToken);
+  window.dispatchEvent(new CustomEvent("smart-safar:session-changed"));
+}
+
+export function storeCachedProfile(profile) {
+  if (typeof window === "undefined" || !profile || !ROLES.has(profile.role)) return;
+  const { password: _password, ...safeProfile } = profile;
+  window.localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ user: safeProfile, role: profile.role, updatedAt: Date.now() }));
+}
+
+export function readCachedProfile(role) {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    return parsed?.role === role && parsed?.user?.role === role ? parsed.user : null;
+  } catch { return null; }
 }
 
 export function readRefreshToken(role) { return typeof window === "undefined" ? null : window.localStorage.getItem(roleRefreshKey(role)); }
@@ -62,11 +87,17 @@ export function clearSessionToken(role) {
     } else if (!activeRole && !hasOtherRoleToken) {
       window.localStorage.removeItem(TOKEN_KEY);
     }
+    window.localStorage.removeItem(PROFILE_CACHE_KEY);
+    clearPersonalCache();
+    window.dispatchEvent(new CustomEvent("smart-safar:session-changed"));
     return;
   }
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(REFRESH_KEY);
   window.localStorage.removeItem(ACTIVE_ROLE_KEY);
+  window.localStorage.removeItem(PROFILE_CACHE_KEY);
+  clearPersonalCache();
+  window.dispatchEvent(new CustomEvent("smart-safar:session-changed"));
 }
 
 export async function revokeAndClearSession(role) {

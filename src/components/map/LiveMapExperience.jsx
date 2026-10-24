@@ -1,27 +1,19 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, readSavedCache } from "@/lib/api";
-import { createTransitSocket } from "@/lib/socket";
-import { demoStopsForRoute, FAISALABAD_CENTER, faisalabadDemoCoordinates, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
+import { useRoutes } from "@/lib/data/hooks";
+import formatCacheAge from "@/lib/data/formatCacheAge";
+import { subscribeBus } from "@/lib/realtime";
+import usePolling from "@/lib/usePolling";
+import { apiRequest } from "@/lib/api";
+import { demoModeEnabled, loadDemoData } from "@/lib/data/demoData";
+import { getDataViewState } from "@/lib/data/viewState.cjs";
+import { MapSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { FAISALABAD_CENTER } from "@/data/mapConfig";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
-
-function makeDemoBuses() {
-  return faisalabadDemoRoutes.flatMap((route, routeIndex) => route.buses.map((bus, busIndex) => {
-    const nextStop = typeof bus.nextStop === "string" ? bus.nextStop : bus.nextStop?.stopName;
-    const point = faisalabadDemoCoordinates[nextStop] || FAISALABAD_CENTER;
-    const latitude = point[0] + (busIndex % 2 ? -0.0016 : 0.0014);
-    const longitude = point[1] + (routeIndex % 2 ? -0.0013 : 0.0012);
-    return {
-      ...bus,
-      _id: bus._id,
-      route: { _id: route._id, routeName: route.routeName },
-      currentLocation: { latitude, longitude },
-      demoOrigin: { latitude, longitude },
-    };
-  }));
-}
+import { getLocationFreshness, useLocationClock } from "@/lib/locationFreshness";
 
 function routeIdForBus(bus) {
   return typeof bus.route === "object" ? bus.route?._id : bus.route;
@@ -63,12 +55,13 @@ function RoutePicker({ routes, value, onChange }) {
     </div>
   </section>;
 }
-function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapController }) {
+function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapController, dataSource, locationClock }) {
   const mapElement = useRef(null);
   const leafletRef = useRef(null);
   const mapRef = useRef(null);
   const routeLayerRef = useRef(null);
   const busLayerRef = useRef(null);
+  const markerRegistryRef = useRef(new Map());
   const onSelectRef = useRef(onSelectBus);
   const [mapReady, setMapReady] = useState(false);
   onSelectRef.current = onSelectBus;
@@ -112,6 +105,7 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
         mapRef.current = null;
         routeLayerRef.current = null;
         busLayerRef.current = null;
+        markerRegistryRef.current.clear();
         leafletRef.current = null;
       }
       setMapReady(false);
@@ -155,130 +149,135 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
   useEffect(() => {
     const L = leafletRef.current;
     const busLayer = busLayerRef.current;
-    if (!mapReady || !L || !busLayer) return;
-    busLayer.clearLayers();
-
-    buses.forEach((bus) => {
-      const rawLatitude = bus.currentLocation?.latitude;
-      const rawLongitude = bus.currentLocation?.longitude;
-      if (rawLatitude == null || rawLongitude == null) return;
-      const latitude = Number(rawLatitude);
-      const longitude = Number(rawLongitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-      const isSelected = String(bus._id) === String(selectedBusId);
-      const statusClass = bus.status === "maintenance" ? " is-maintenance" : bus.status === "idle" ? " is-idle" : "";
-      const icon = L.divIcon({
-        className: "ss-leaflet-marker",
-        html: `<span class="ss-bus-pin${isSelected ? " is-selected" : ""}${statusClass}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 16.5h14V7.8A1.8 1.8 0 0 0 17.2 6H6.8A1.8 1.8 0 0 0 5 7.8v8.7ZM5 12h14M8 9h.01M12 9h.01M16 9h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="17.5" r="1.6" fill="currentColor"/><circle cx="16" cy="17.5" r="1.6" fill="currentColor"/></svg></span>`,
-        iconSize: [38, 38], iconAnchor: [19, 19],
+    const map = mapRef.current;
+    if (!mapReady || !L || !busLayer || !map) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const located = buses.filter((bus) => {
+        const lat = Number(bus.currentLocation?.latitude);
+        const lon = Number(bus.currentLocation?.longitude);
+        return Number.isFinite(lat) && Number.isFinite(lon) && (dataSource === "demo" || getLocationFreshness(bus.lastLocationUpdate, locationClock).available);
       });
-      const marker = L.marker([latitude, longitude], { icon, keyboard: true, title: bus.busNumber || "Transit bus" });
-      marker.bindTooltip(tooltipText(bus.busNumber || "Transit bus"), { direction: "top", offset: [0, -17] });
-      marker.on("click", () => onSelectRef.current(bus._id));
-      marker.addTo(busLayer);
+      const entries = new Map();
+      if (located.length > 100) {
+        located.forEach((bus) => {
+          const latitude = Number(bus.currentLocation.latitude);
+          const longitude = Number(bus.currentLocation.longitude);
+          const gridKey = `${Math.round(latitude / 0.005)}:${Math.round(longitude / 0.005)}`;
+          if (!entries.has(gridKey)) entries.set(gridKey, []);
+          entries.get(gridKey).push(bus);
+        });
+      } else located.forEach((bus) => entries.set(`bus:${bus._id}`, [bus]));
+
+      const visibleKeys = new Set();
+      for (const [groupKey, members] of entries) {
+        const isCluster = members.length > 1;
+        const key = isCluster ? `cluster:${groupKey}` : `bus:${members[0]._id}`;
+        const bus = members[0];
+        const latitude = members.reduce((sum, item) => sum + Number(item.currentLocation.latitude), 0) / members.length;
+        const longitude = members.reduce((sum, item) => sum + Number(item.currentLocation.longitude), 0) / members.length;
+        const selected = !isCluster && String(bus._id) === String(selectedBusId);
+        const statusClass = bus.status === "maintenance" ? " is-maintenance" : bus.status === "idle" ? " is-idle" : "";
+        const styleKey = isCluster ? `cluster:${members.length}` : `bus:${selected}:${statusClass}`;
+        const icon = isCluster
+          ? L.divIcon({ className: "ss-bus-cluster-wrap", html: `<span class="ss-bus-cluster">${members.length}</span>`, iconSize: [42, 42], iconAnchor: [21, 21] })
+          : L.divIcon({ className: "ss-leaflet-marker", html: `<span class="ss-bus-pin${selected ? " is-selected" : ""}${statusClass}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 16.5h14V7.8A1.8 1.8 0 0 0 17.2 6H6.8A1.8 1.8 0 0 0 5 7.8v8.7ZM5 12h14M8 9h.01M12 9h.01M16 9h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="17.5" r="1.6" fill="currentColor"/><circle cx="16" cy="17.5" r="1.6" fill="currentColor"/></svg></span>`, iconSize: [38, 38], iconAnchor: [19, 19] });
+        let entry = markerRegistryRef.current.get(key);
+        if (!entry) {
+          const marker = L.marker([latitude, longitude], { icon, keyboard: true, title: isCluster ? `${members.length} transit buses` : bus.busNumber || "Transit bus" }).addTo(busLayer);
+          if (isCluster) {
+            marker.bindTooltip(tooltipText(`${members.length} buses nearby`), { direction: "top" });
+            marker.on("click", () => {
+              const currentMembers = markerRegistryRef.current.get(key)?.members || [];
+              if (currentMembers.length) map.fitBounds(L.latLngBounds(currentMembers.map((item) => [Number(item.currentLocation.latitude), Number(item.currentLocation.longitude)])).pad(0.4), { maxZoom: 16 });
+            });
+          } else {
+            marker.bindTooltip(tooltipText(bus.busNumber || "Transit bus"), { direction: "top", offset: [0, -17] });
+            marker.on("click", () => onSelectRef.current(bus._id));
+          }
+          entry = { marker, styleKey, members };
+          markerRegistryRef.current.set(key, entry);
+        } else {
+          entry.marker.setLatLng([latitude, longitude]);
+          entry.members = members;
+          if (entry.styleKey !== styleKey) { entry.marker.setIcon(icon); entry.styleKey = styleKey; }
+          entry.marker.options.title = isCluster ? `${members.length} transit buses` : bus.busNumber || "Transit bus";
+          entry.marker.setTooltipContent(tooltipText(isCluster ? `${members.length} buses nearby` : bus.busNumber || "Transit bus"));
+        }
+        visibleKeys.add(key);
+      }
+      for (const [key, entry] of markerRegistryRef.current) {
+        if (visibleKeys.has(key)) continue;
+        busLayer.removeLayer(entry.marker);
+        markerRegistryRef.current.delete(key);
+      }
     });
-  }, [mapReady, buses, selectedBusId]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [mapReady, buses, selectedBusId, dataSource, locationClock]);
 
   return <div ref={mapElement} className="h-full w-full rounded-[1.35rem] bg-[#e6e9f4]" role="application" aria-label="Interactive Leaflet map showing Faisalabad bus routes and stops" />;
 }
 
 export default function LiveMapExperience() {
-  const [routes, setRoutes] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data;
-    }
-    return faisalabadDemoRoutes;
-  });
-  const [routeId, setRouteId] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data[0]._id;
-    }
-    return faisalabadDemoRoutes[0]._id;
-  });
-  const [buses, setBuses] = useState(() => {
-    if (typeof window !== "undefined") {
-      const savedBuses = readSavedCache("/buses");
-      if (savedBuses?.data && Array.isArray(savedBuses.data) && savedBuses.data.length) return savedBuses.data;
-    }
-    return makeDemoBuses();
-  });
-  const [stops, setStops] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
-        const savedStops = readSavedCache(`/stops/route/${saved.data[0]._id}`);
-        if (savedStops?.data && Array.isArray(savedStops.data) && savedStops.data.length) return savedStops.data;
-      }
-    }
-    return demoStopsForRoute(faisalabadDemoRoutes[0]);
-  });
-  const [dataSource, setDataSource] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return "saved";
-    }
-    return "demo";
-  });
-  const [selectedBusId, setSelectedBusId] = useState(() => faisalabadDemoRoutes[0].buses[0]._id);
-  const [realtimeStatus, setRealtimeStatus] = useState("demo");
+  const locationClock = useLocationClock();
+  const routesResource = useRoutes();
+  const initialRoutes = Array.isArray(routesResource.data) ? routesResource.data : [];
+  const [routes, setRoutes] = useState(initialRoutes);
+  const [routeId, setRouteId] = useState(initialRoutes[0]?._id || "");
+  const [buses, setBuses] = useState(() => initialRoutes.flatMap((route) => (route.buses || []).map((bus) => ({ ...bus, route: { _id: route._id, routeName: route.routeName } }))));
+  const [dataSource, setDataSource] = useState(() => routesResource.hasCache ? "saved" : initialRoutes.length ? "backend" : "loading");
+  const [demoData, setDemoData] = useState(null);
+  const [selectedBusId, setSelectedBusId] = useState(null);
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting");
   const [busQuery, setBusQuery] = useState("");
   const [mapMessage, setMapMessage] = useState("");
   const mapController = useRef(null);
+  const initialRouteSelectionApplied = useRef(false);
+  const initialBusSelectionApplied = useRef(false);
+
+  const selectedRoute = routes.find((route) => String(route._id) === String(routeId)) || routes[0] || null;
+  const stops = useMemo(() => {
+    if (!selectedRoute) return [];
+    if (dataSource === "demo") return demoData?.demoStopsForRoute(selectedRoute) || [];
+    return Array.isArray(selectedRoute.stops) ? selectedRoute.stops : [];
+  }, [selectedRoute, dataSource, demoData]);
+  const dataViewState = getDataViewState({ isLoading: dataSource === "loading", error: dataSource === "error" ? routesResource.error : null, data: routes, hasCache: dataSource === "saved" });
 
   useEffect(() => {
     const saved = readBookingSelection();
     const params = new URLSearchParams(window.location.search);
     const initialRoute = params.get('route') || saved.routeId;
     const initialBus = params.get('bus') || saved.busId;
-    if (initialRoute) setRouteId(initialRoute);
-    if (initialBus) setSelectedBusId(initialBus);
+    const liveRoutes = Array.isArray(routesResource.data) ? routesResource.data : [];
     let active = true;
-    Promise.all([apiRequest("/routes"), apiRequest("/buses")]).then(([routeResult, busResult]) => {
-      if (!active) return;
-      const liveRoutes = Array.isArray(routeResult) ? routeResult : [];
-      if (!liveRoutes.length) return;
-      const liveBuses = Array.isArray(busResult) ? busResult : [];
+    if (Array.isArray(routesResource.data) && liveRoutes.length) {
       setRoutes(liveRoutes);
-      setRouteId((current) => liveRoutes.some((route) => String(route._id) === String(initialRoute || current)) ? (initialRoute || current) : liveRoutes[0]._id);
-      setBuses(liveBuses);
-      setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(initialBus || current)) ? (initialBus || current) : liveBuses[0]?._id || null);
-      setDataSource(typeof navigator !== "undefined" && !navigator.onLine ? "saved" : "backend");
+      setBuses(liveRoutes.flatMap((route) => (route.buses || []).map((bus) => ({ ...bus, route: { _id: route._id, routeName: route.routeName } }))));
+      setRouteId((current) => !initialRouteSelectionApplied.current && liveRoutes.some((route) => String(route._id) === String(initialRoute)) ? initialRoute : liveRoutes.some((route) => String(route._id) === String(current)) ? current : liveRoutes[0]._id);
+      initialRouteSelectionApplied.current = true;
+      const allBuses = liveRoutes.flatMap((route) => route.buses || []);
+      setSelectedBusId((current) => !initialBusSelectionApplied.current && allBuses.some((bus) => String(bus._id) === String(initialBus)) ? initialBus : allBuses.some((bus) => String(bus._id) === String(current)) ? current : allBuses[0]?._id || null);
+      initialBusSelectionApplied.current = true;
+      setDataSource(routesResource.hasCache ? "saved" : "backend");
       setRealtimeStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "connecting");
-    }).catch(() => {
-      if (!active) return;
-      const savedRoutes = readSavedCache("/routes");
-      if (savedRoutes?.data && Array.isArray(savedRoutes.data) && savedRoutes.data.length) {
-        const liveRoutes = savedRoutes.data;
-        setRoutes(liveRoutes);
-        setRouteId((current) => liveRoutes.some((route) => String(route._id) === String(initialRoute || current)) ? (initialRoute || current) : liveRoutes[0]._id);
-        const savedBuses = readSavedCache("/buses");
-        const liveBuses = Array.isArray(savedBuses?.data) ? savedBuses.data : [];
-        if (liveBuses.length) setBuses(liveBuses);
-        setSelectedBusId((current) => liveBuses.some((bus) => String(bus._id) === String(initialBus || current)) ? (initialBus || current) : liveBuses[0]?._id || null);
-        setDataSource("saved");
-        setRealtimeStatus("offline");
-      }
-    });
-    return () => { active = false; };
-  }, []);
-
-  const selectedRoute = routes.find((route) => route._id === routeId) || routes[0];
-
-  useEffect(() => {
-    if (!selectedRoute) return undefined;
-    if (dataSource === "demo") {
-      setStops(demoStopsForRoute(selectedRoute));
-      return undefined;
+    } else if (Array.isArray(routesResource.data)) {
+      setRoutes([]); setBuses([]); setRouteId(""); setSelectedBusId(null); setDataSource("empty"); setRealtimeStatus("idle");
+    } else if (routesResource.error) {
+      if (demoModeEnabled) {
+        void loadDemoData().then((data) => {
+          if (!active) return;
+          setDemoData(data);
+          const demoRoutes = data?.faisalabadDemoRoutes || [];
+          const demoBuses = demoRoutes.flatMap((route, routeIndex) => route.buses.map((bus, busIndex) => {
+            const nextStop = typeof bus.nextStop === "string" ? bus.nextStop : bus.nextStop?.stopName;
+            const point = data.faisalabadDemoCoordinates[nextStop] || FAISALABAD_CENTER;
+            return { ...bus, route: { _id: route._id, routeName: route.routeName }, currentLocation: { latitude: point[0] + (busIndex % 2 ? -0.0016 : 0.0014), longitude: point[1] + (routeIndex % 2 ? -0.0013 : 0.0012) }, demoOrigin: { latitude: point[0], longitude: point[1] } };
+          }));
+          setRoutes(demoRoutes); setBuses(demoBuses); setRouteId(demoRoutes[0]?._id || ""); setSelectedBusId(demoBuses[0]?._id || null); setDataSource(demoRoutes.length ? "demo" : "error"); setRealtimeStatus("demo");
+        });
+      } else { setRoutes([]); setBuses([]); setRouteId(""); setSelectedBusId(null); setDataSource("error"); setRealtimeStatus("unavailable"); }
     }
-    let active = true;
-    setStops([]);
-    apiRequest(`/stops/route/${encodeURIComponent(selectedRoute._id)}`)
-      .then((result) => { if (active) setStops(Array.isArray(result) ? result : []); })
-      .catch(() => { if (active) setStops([]); });
     return () => { active = false; };
-  }, [selectedRoute?._id, dataSource]);
+  }, [routesResource.data, routesResource.error, routesResource.hasCache]);
 
   const visibleBuses = useMemo(() => buses.filter((bus) => routeIdForBus(bus) === routeId), [buses, routeId]);
   const matchingBuses = useMemo(() => {
@@ -286,7 +285,16 @@ export default function LiveMapExperience() {
     return visibleBuses.filter((bus) => !term || `${bus.busNumber || ""} ${displayStatus(bus.status)}`.toLowerCase().includes(term));
   }, [visibleBuses, busQuery]);
   const selectedBus = visibleBuses.find((bus) => String(bus._id) === String(selectedBusId)) || visibleBuses[0] || null;
+  const selectedBusFreshness = selectedBus && dataSource !== "demo" ? getLocationFreshness(selectedBus.lastLocationUpdate, locationClock) : null;
   const visibleBusIds = visibleBuses.map((bus) => bus._id).filter(Boolean).join(",");
+
+  const refreshRouteOverview = async () => {
+    const result = await apiRequest("/routes/overview", { cache: "no-store" });
+    if (!Array.isArray(result)) return;
+    setRoutes(result);
+    setBuses(result.flatMap((route) => (route.buses || []).map((bus) => ({ ...bus, route: { _id: route._id, routeName: route.routeName } }))));
+  };
+  usePolling(refreshRouteOverview, 30000, { enabled: dataSource === "backend" });
 
   useEffect(() => {
     if (dataSource !== "demo") return undefined;
@@ -305,15 +313,12 @@ export default function LiveMapExperience() {
 
   useEffect(() => {
     if (dataSource !== "backend" || !visibleBusIds) return undefined;
-    const socket = createTransitSocket();
-    const watchedIds = visibleBusIds.split(",");
-    socket.on("connect", () => {
-      setRealtimeStatus("live");
-      watchedIds.forEach((id) => socket.emit("watchBus", id));
-    });
-    socket.on("connect_error", () => setRealtimeStatus("reconnecting"));
-    socket.on("disconnect", () => setRealtimeStatus("reconnecting"));
-    socket.on("locationUpdate", (update) => {
+    const onSocketStatus = (event) => setRealtimeStatus(event.detail?.connected ? "live" : "reconnecting");
+    const onResume = () => { setRealtimeStatus("connecting"); void refreshRouteOverview().catch(() => setRealtimeStatus("reconnecting")); };
+    window.addEventListener("smart-safar:socket-status", onSocketStatus);
+    window.addEventListener("smart-safar:realtime-resume", onResume);
+    const cleanups = visibleBusIds.split(",").map((id) => subscribeBus(id, {
+      locationUpdate: (update) => {
       setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? {
         ...bus,
         currentLocation: { latitude: update.latitude, longitude: update.longitude },
@@ -323,13 +328,14 @@ export default function LiveMapExperience() {
         etaMinutes: update.etaMinutes,
         direction: update.direction,
       } : bus));
-    });
-    socket.on("seatStateUpdate", (update) => {
+      setRealtimeStatus("live");
+      },
+      seatStateUpdate: (update) => {
       if (!update?.busId) return;
       setBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.available, ...(update.capacity != null ? { capacity: update.capacity } : {}) } : bus));
-    });
-    socket.connect();
-    return () => socket.disconnect();
+      },
+    }));
+    return () => { cleanups.forEach((cleanup) => cleanup()); window.removeEventListener("smart-safar:socket-status", onSocketStatus); window.removeEventListener("smart-safar:realtime-resume", onResume); };
   }, [dataSource, visibleBusIds]);
 
   function locateMe() {
@@ -352,14 +358,16 @@ export default function LiveMapExperience() {
         </RevealOnScroll>
 
         <div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : dataSource === "saved" ? "bg-slate-100 text-slate-700" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : dataSource === "saved" ? "bg-slate-500" : "bg-[#22bfa7]"}`}/>{dataSource === "demo" ? "Demo mode · simulated locations" : dataSource === "saved" ? "Saved data · offline mode" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : "Transit data connected · waiting for GPS"}</span>
+          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${dataSource === "demo" ? "bg-amber-50 text-amber-800" : dataSource === "saved" ? "bg-slate-100 text-slate-700" : dataSource === "error" ? "bg-rose-50 text-rose-800" : "bg-[#e8faf4] text-[#167b6e]"}`}><span className={`h-1.5 w-1.5 rounded-full ${dataSource === "demo" ? "bg-amber-500" : dataSource === "saved" ? "bg-slate-500" : dataSource === "error" ? "bg-rose-500" : "bg-[#22bfa5]"}`}/>{dataSource === "demo" ? "Demo data · simulated locations" : dataSource === "saved" ? `Saved real data · ${formatCacheAge(routesResource.cachedAt) || "offline"}` : dataSource === "empty" ? "No routes published" : dataSource === "error" ? "Real transit data unavailable" : dataViewState === "loading" ? "Loading route data" : realtimeStatus === "live" ? "Live bus locations" : realtimeStatus === "reconnecting" ? "Live updates reconnecting · last location shown" : realtimeStatus === "unavailable" ? "Live updates unavailable" : "Transit data connected · waiting for GPS"}</span>
           {selectedRoute && <span className="max-w-full truncate rounded-full bg-white px-3 py-1.5 text-xs font-medium text-[#68738e]">{selectedRoute.startPoint} <span className="px-1 text-[#20a992]">→</span> {selectedRoute.endPoint}</span>}
         </div>
 
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(310px,.85fr)]">
           <section className="min-w-0 rounded-[1.75rem] border border-white bg-white p-2.5 shadow-[0_16px_42px_rgba(53,67,112,.1)] sm:p-3" aria-label="Bus map">
             <div className="relative h-[42svh] min-h-[280px] max-h-[430px] w-full min-w-0 overflow-hidden rounded-[1.4rem] bg-[#e6e9f4] sm:h-[48svh] sm:min-h-[340px] sm:max-h-[520px] lg:h-[60vh] lg:min-h-[420px] lg:max-h-[650px]">
-              <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={(id) => { setSelectedBusId(id); saveBookingSelection({ routeId, busId: id }); }} mapController={mapController}/>
+              <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={(id) => { setSelectedBusId(id); saveBookingSelection({ routeId, busId: id }); }} mapController={mapController} dataSource={dataSource} locationClock={locationClock}/>
+              {dataSource === "loading" && <div className="absolute inset-0 z-[600]"><MapSkeleton className="!min-h-0 h-full rounded-[1.4rem]" /></div>}
+              {(dataSource === "error" || dataSource === "empty") && <div role={dataSource === "error" ? "alert" : "status"} className="absolute inset-x-4 top-16 z-[600] mx-auto max-w-sm rounded-2xl border border-white bg-white/95 p-4 text-center text-sm text-[#596681] shadow-lg">{dataSource === "error" ? <>We couldn’t load real route data. <button onClick={() => void routesResource.refresh()} className="font-semibold text-[#536bb7] underline">Retry</button>{demoModeEnabled && <span className="mt-1 block text-xs">Demo data is available when demo mode is enabled.</span>}</> : "The transit service has no routes to show yet."}</div>}
               <button onClick={locateMe} className="absolute left-3 top-3 z-[500] inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/80 bg-white/95 px-3.5 text-xs font-semibold text-[#465a9c] shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" aria-label="Show my current location"><span aria-hidden="true">◎</span><span className="hidden sm:inline">My location</span></button>
               <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap gap-2 rounded-xl border border-white/80 bg-white/95 px-3 py-2 text-[10px] font-semibold text-[#596681] shadow-md backdrop-blur"><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#20bba5]"/>Bus</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#7185c6]"/>Stop</span></div>
             </div>
@@ -371,11 +379,11 @@ export default function LiveMapExperience() {
 
             <div className="mt-5 rounded-2xl border border-white/90 bg-[#fffdf8] p-4 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-[.13em] text-[#68738e]">Bus details</h3>
-              {selectedBus ? <><div className="mt-3 flex items-center justify-between gap-3"><p className="text-lg font-bold text-[#293553]">{selectedBus.busNumber || "Transit bus"}</p><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${selectedBus.status === "active" ? "bg-[#e4f8f0] text-[#18846f]" : "bg-[#eef0fa] text-[#687697]"}`}>{displayStatus(selectedBus.status)}</span></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Seats free</p><p className="mt-1 text-base font-bold text-[#34405d]">{selectedBus.availableSeats ?? "—"}<span className="text-xs font-medium text-[#7b859c]">{selectedBus.capacity != null ? ` / ${selectedBus.capacity}` : ""}</span></p></div><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Next stop</p><p className="mt-1 truncate text-sm font-bold text-[#34405d]">{selectedBus.nextStop?.stopName || selectedBus.nextStop || "Awaiting update"}</p></div></div><p className="mt-3 text-xs text-[#7b859c]">{selectedBus.etaMinutes != null ? `Estimated arrival · ${Math.round(selectedBus.etaMinutes)} min` : dataSource === "demo" ? "Sample position updates every few seconds" : selectedBus.lastLocationUpdate ? `Updated ${new Date(selectedBus.lastLocationUpdate).toLocaleTimeString()}` : "Waiting for the driver's GPS update"}</p></> : <p className="mt-3 text-sm leading-6 text-[#7b859c]">No bus with a current GPS location is available on this route yet.</p>}
+              {selectedBus ? <><div className="mt-3 flex items-center justify-between gap-3"><p className="text-lg font-bold text-[#293553]">{selectedBus.busNumber || "Transit bus"}</p><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${selectedBus.status === "active" ? "bg-[#e4f8f0] text-[#18846f]" : "bg-[#eef0fa] text-[#687697]"}`}>{displayStatus(selectedBus.status)}</span></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Seats free</p><p className="mt-1 text-base font-bold text-[#34405d]">{selectedBus.availableSeats ?? "—"}<span className="text-xs font-medium text-[#7b859c]">{selectedBus.capacity != null ? ` / ${selectedBus.capacity}` : ""}</span></p></div><div className="rounded-xl bg-[#f1f2fa] p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-[#818ba2]">Next stop</p><p className="mt-1 truncate text-sm font-bold text-[#34405d]">{selectedBusFreshness?.available === false ? "Location unavailable" : selectedBus.nextStop?.stopName || selectedBus.nextStop || "Awaiting update"}</p></div></div><p className="mt-3 text-xs text-[#7b859c]">{dataSource === "demo" ? (selectedBus.etaMinutes != null ? `Estimated arrival · ${Math.round(selectedBus.etaMinutes)} min` : "Sample position updates every few seconds") : selectedBusFreshness?.label || "Location unavailable"}</p></> : <p className="mt-3 text-sm leading-6 text-[#7b859c]">{dataSource === "error" ? "Bus information is unavailable until a connection returns." : dataSource === "empty" ? "No buses are running on this route right now." : "No bus with a current GPS location is available on this route yet."}</p>}
             </div>
 
             <div className="mt-5"><div className="flex items-center justify-between gap-3"><h3 className="text-sm font-semibold text-[#394562]">Buses on this route</h3><span className="text-xs text-[#7b859c]">{matchingBuses.length}</span></div><label className="mt-3 flex items-center gap-2 rounded-xl border border-white/90 bg-white px-3 py-2.5"><span className="text-sm text-[#8290b0]" aria-hidden="true">⌕</span><span className="sr-only">Search buses</span><input value={busQuery} onChange={(event) => setBusQuery(event.target.value)} placeholder="Find a bus" className="min-w-0 flex-1 bg-transparent text-xs text-[#34405d] outline-none placeholder:text-[#9aa3b7]"/></label>
-              <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">{matchingBuses.map((bus) => <button key={bus._id || bus.busNumber} onClick={() => setSelectedBusId(bus._id)} aria-pressed={String(bus._id) === String(selectedBus?._id)} className={`flex min-h-[62px] w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${String(bus._id) === String(selectedBus?._id) ? "border-[#b8c5ee] bg-white shadow-sm" : "border-white/70 bg-white/55 hover:bg-white"}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#34405d]">{bus.busNumber || "Transit bus"}</span><span className="mt-1 block truncate text-[11px] text-[#7b859c]">{bus.nextStop?.stopName || bus.nextStop || displayStatus(bus.status)}</span></span><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${bus.status === "active" ? "bg-[#20bba5]" : bus.status === "maintenance" ? "bg-[#f39a55]" : "bg-[#98a2ba]"}`} aria-label={displayStatus(bus.status)}/></button>)}{matchingBuses.length === 0 && <p className="rounded-xl bg-white/70 p-4 text-xs leading-5 text-[#7b859c]">No buses match this search.</p>}</div>
+              <div className="long-content-list mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1">{matchingBuses.map((bus) => <button key={bus._id || bus.busNumber} onClick={() => setSelectedBusId(bus._id)} aria-pressed={String(bus._id) === String(selectedBus?._id)} className={`flex min-h-[62px] w-full items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${String(bus._id) === String(selectedBus?._id) ? "border-[#b8c5ee] bg-white shadow-sm" : "border-white/70 bg-white/55 hover:bg-white"}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-[#34405d]">{bus.busNumber || "Transit bus"}</span><span className="mt-1 block truncate text-[11px] text-[#7b859c]">{dataSource === "demo" ? (bus.nextStop?.stopName || bus.nextStop || displayStatus(bus.status)) : getLocationFreshness(bus.lastLocationUpdate, locationClock).label}</span></span><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${bus.status === "active" ? "bg-[#20bba5]" : bus.status === "maintenance" ? "bg-[#f39a55]" : "bg-[#98a2ba]"}`} aria-label={displayStatus(bus.status)}/></button>)}{matchingBuses.length === 0 && <p className="rounded-xl bg-white/70 p-4 text-xs leading-5 text-[#7b859c]">{visibleBuses.length ? "No buses match this search." : "No buses running on this route right now."}</p>}</div>
             </div>
             <p className="mt-4 text-[10px] leading-4 text-[#808aa1]">{dataSource === "demo" ? "Demo locations are approximate and simulated for this prototype." : "Bus markers update from the Smart Safar location service."}</p>
           </aside>

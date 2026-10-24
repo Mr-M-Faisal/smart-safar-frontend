@@ -3,14 +3,18 @@
   "name": "Smart Safar",
   "short_name": "Smart Safar",
   "description": "Explore Faisalabad transit routes, bus updates, and your journey.",
-  "start_url": "/?source=pwa",
+  "start_url": "/m?source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
+  "shortcuts": [
+    { "name": "Live map", "short_name": "Map", "url": "/m/map", "icons": [{ "src": "/icons/smart-safar-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "My trips", "short_name": "Trips", "url": "/m/trips", "icons": [{ "src": "/icons/smart-safar-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ],
   "orientation": "portrait",
   "lang": "en",
-  "background_color": "#111d3d",
-  "theme_color": "#111d3d",
+  "background_color": "#f4f5fb",
+  "theme_color": "#f4f5fb",
   "icons": [
     { "src": "/icons/smart-safar-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/smart-safar-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

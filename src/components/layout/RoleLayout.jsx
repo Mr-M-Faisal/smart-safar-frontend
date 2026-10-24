@@ -1,28 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BrandMark from "@/components/layout/BrandMark";
 
 export default function RoleLayout({ role, title, links = [], children }) {
-  const [activeTab, setActiveTab] = useState("");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const isDriver = role === "Driver";
   const isAdmin = role === "Administrator";
 
-  useEffect(() => {
-    const syncTab = () => setActiveTab(window.location.hash || window.location.pathname.replace(/\/+$/, "") || "/");
-    syncTab();
-    window.addEventListener("hashchange", syncTab);
-    window.addEventListener("popstate", syncTab);
-    return () => {
-      window.removeEventListener("hashchange", syncTab);
-      window.removeEventListener("popstate", syncTab);
-    };
-  }, []);
-
   function linkIsActive(href) {
-    const hashIndex = href.indexOf("#");
-    return hashIndex >= 0 ? activeTab === href.slice(hashIndex) : activeTab === (href.split(/[?#]/)[0].replace(/\/+$/, "") || "/");
+    const target = new URL(href, "https://smartsafar.invalid");
+    if (isAdmin) return pathname === target.pathname && (searchParams.get("tab") || "overview") === (target.searchParams.get("tab") || "overview");
+    return pathname === (target.pathname.replace(/\/+$/, "") || "/");
   }
 
   return (
@@ -42,13 +34,12 @@ export default function RoleLayout({ role, title, links = [], children }) {
         <p className={`relative z-10 mb-2 mt-5 px-2 text-[9px] font-bold uppercase tracking-[.2em] ${isDriver ? "driver-sidebar-label lg:mt-9" : "text-[#9aa4ba] lg:mt-8"}`}>Workspace menu</p>
         <nav className={`relative z-10 flex gap-2 overflow-x-auto pb-1 lg:flex-col ${isDriver ? "driver-nav" : ""}`} aria-label={`${role} navigation`}>
           {links.map(({ label, href }, index) => {
-            const NavLink = isAdmin ? "a" : Link;
             const isActive = linkIsActive(href);
-            return <NavLink key={href} href={href} aria-current={isActive ? "page" : undefined} className={`group inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2.5 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 sm:text-sm lg:w-full ${isDriver ? `driver-nav-link ${isActive ? "is-active" : ""}` : `${isActive ? "border-[#d6def8] bg-gradient-to-r from-[#e9edff] to-[#f4f6fc] text-[#405ba7] shadow-sm" : "border-transparent text-slate-600 hover:border-[#e4e9f7] hover:bg-[#f7f8fc] hover:text-[#405ba7]"} hover:shadow-sm`}`}>
+            return <Link key={href} href={href} scroll={false} onClick={isAdmin ? (event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); router.replace(href, { scroll: false }); } } : undefined} aria-current={isActive ? "page" : undefined} className={`group inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2.5 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 sm:text-sm lg:w-full ${isDriver ? `driver-nav-link ${isActive ? "is-active" : ""}` : `${isActive ? "border-[#d6def8] bg-gradient-to-r from-[#e9edff] to-[#f4f6fc] text-[#405ba7] shadow-sm" : "border-transparent text-slate-600 hover:border-[#e4e9f7] hover:bg-[#f7f8fc] hover:text-[#405ba7]"} hover:shadow-sm`}`}>
               <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[9px] font-bold transition ${isDriver ? "driver-nav-index" : isActive ? "bg-[#536bb7] text-white" : "bg-[#f0f2fa] text-[#7381a4] group-hover:bg-[#e9edff] group-hover:text-[#536bb7]"}`}>{String(index + 1).padStart(2, "0")}</span>
               {label}
               {isDriver && <span className="driver-nav-arrow ml-auto" aria-hidden="true">→</span>}
-            </NavLink>;
+            </Link>;
           })}
         </nav>
 

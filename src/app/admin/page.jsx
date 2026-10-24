@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, readSessionToken, revokeAndClearSession } from "@/lib/session";
+import { clearSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import usePolling from "@/lib/usePolling";
 
 const initialData = { overview: null, buses: [], routes: [], drivers: [], shifts: [], adminBookings: [], reportItems: [], stopsByRoute: {}, alertsByRoute: {} };
+const adminTabs = ["overview", "drivers", "routes", "bookings", "buses", "reports"];
 const endpointsByTab = {
   overview: [["overview", "/admin/overview"]],
   drivers: [["drivers", "/admin/drivers"], ["shifts", "/admin/shifts"], ["buses", "/buses"]],
-  routes: [["routes", "/routes"], ["buses", "/buses"], ["shifts", "/admin/shifts"]],
+  routes: [["routesWithDetails", "/admin/routes-with-details"], ["buses", "/buses"], ["shifts", "/admin/shifts"]],
   bookings: [["adminBookings", "/admin/bookings"]],
   buses: [["buses", "/buses"], ["routes", "/routes"], ["drivers", "/admin/drivers"]],
   reports: [["reportItems", "/reports"]],
@@ -38,6 +42,10 @@ function SelectField({ label, children, ...props }) {
 }
 
 export default function AdminHomePage() {
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTabRef = useRef(adminTabs.includes(requestedTab) ? requestedTab : "overview");
+  const auth = useAuth();
   const [token, setToken] = useState(null);
   const [admin, setAdmin] = useState(null);
   const [sessionState, setSessionState] = useState("loading");
@@ -55,32 +63,27 @@ export default function AdminHomePage() {
   const [stopForm, setStopForm] = useState({ route: "", stopName: "", latitude: "", longitude: "", stopOrder: "" });
   const [alertForm, setAlertForm] = useState({ route: "", message: "", severity: "info", expiresAt: "" });
   const [bookingFilter, setBookingFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialTabRef.current);
   const [loadingTab, setLoadingTab] = useState("");
-  const [routeDetailsLoading, setRouteDetailsLoading] = useState(false);
   const profileVerifiedRef = useRef(false);
   const loadedTabsRef = useRef(new Set());
 
   useEffect(() => {
-    const syncTab = () => setActiveTab((window.location.hash || "#overview").slice(1));
-    syncTab();
-    window.addEventListener("hashchange", syncTab);
-    return () => window.removeEventListener("hashchange", syncTab);
-  }, []);
+    setActiveTab(adminTabs.includes(requestedTab) ? requestedTab : "overview");
+  }, [requestedTab]);
 
   const loadData = useCallback(async (sessionToken, isActive = () => true, tab = "overview") => {
     setLoadingTab(tab);
     if (!profileVerifiedRef.current) {
-      const profile = await apiRequest("/auth/profile", { token: sessionToken });
       if (!isActive()) return;
-      if (profile.role !== "admin") {
+      if (auth.role !== "admin" || !auth.user) {
         setToken(null); setAdmin(null); setSessionState("denied"); setLoadingTab(""); return;
       }
-      setAdmin(profile);
+      setAdmin(auth.user);
       profileVerifiedRef.current = true;
     }
     const results = await Promise.all((endpointsByTab[tab] || endpointsByTab.overview).map(async ([key, path]) => {
-      try { return { key, value: await apiRequest(path, { token: sessionToken }) }; }
+      try { return { key, value: await apiRequest(path, path === "/buses" ? {} : { token: sessionToken }) }; }
       catch (error) { return { key, error }; }
     }));
     if (!isActive()) return;
@@ -90,12 +93,19 @@ export default function AdminHomePage() {
       if (error) { errors.push({ key, message: error.message }); return; }
       values[key] = value;
     });
+    if (Array.isArray(values.routesWithDetails)) {
+      const detailedRoutes = values.routesWithDetails;
+      values.routes = detailedRoutes.map(({ stops: _stops, alerts: _alerts, ...route }) => route);
+      values.stopsByRoute = Object.fromEntries(detailedRoutes.map((route) => [route._id, Array.isArray(route.stops) ? route.stops : []]));
+      values.alertsByRoute = Object.fromEntries(detailedRoutes.map((route) => [route._id, Array.isArray(route.alerts) ? route.alerts : []]));
+      delete values.routesWithDetails;
+    }
     setData((current) => ({ ...current, ...values }));
     setDataErrors(errors);
     loadedTabsRef.current.add(tab);
     setLoadingTab("");
     setSessionState("ready");
-  }, []);
+  }, [auth.role, auth.user]);
   useEffect(() => {
     const handleExpired = (event) => { if (event.detail?.role === "admin") { setToken(null); setAdmin(null); setSessionState("expired"); } };
     window.addEventListener("smart-safar:auth-expired", handleExpired);
@@ -103,20 +113,20 @@ export default function AdminHomePage() {
   }, []);
   useEffect(() => {
     let active = true;
-    const sessionToken = readSessionToken("admin");
+    if (auth.status === "loading" || (auth.status === "authenticated" && !auth.validated)) return () => { active = false; };
+    const sessionToken = auth.status === "authenticated" && auth.role === "admin" ? auth.token : null;
     setToken(sessionToken);
     if (!sessionToken) { setSessionState("signed-out"); return () => { active = false; }; }
     setSessionState("loading");
     loadedTabsRef.current.clear();
     setData((current) => ({ ...current, stopsByRoute: {}, alertsByRoute: {} }));
-    const firstTab = (window.location.hash || "#overview").slice(1);
-    loadData(sessionToken, () => active, firstTab).catch((error) => {
+    loadData(sessionToken, () => active, initialTabRef.current).catch((error) => {
       if (!active) return;
       if (error.status === 401) { clearSessionToken("admin"); setToken(null); setSessionState("expired"); }
       else { setSessionState("error"); setNotice({ type: "error", text: error.message || "Could not load the administrator profile." }); }
     });
     return () => { active = false; };
-  }, [loadData, refreshKey]);
+  }, [auth.status, auth.validated, auth.role, auth.token, loadData, refreshKey]);
 
   useEffect(() => {
     if (sessionState !== "ready" || !token || loadedTabsRef.current.has(activeTab)) return undefined;
@@ -128,50 +138,17 @@ export default function AdminHomePage() {
     });
     return () => { active = false; };
   }, [activeTab, sessionState, token, loadData]);
+
+  const pollOperatingState = useCallback(async () => {
+    if (!token) return;
+    const [buses, shifts] = await Promise.all([apiRequest("/buses"), apiRequest("/admin/shifts", { token })]);
+    setData(current => ({ ...current, buses, shifts }));
+  }, [token]);
+  usePolling(pollOperatingState, 30000, { enabled: sessionState === "ready" && activeTab === "routes" && Boolean(token) });
   useEffect(() => {
-    if (sessionState !== "ready" || activeTab !== "routes" || !token || data.routes.length === 0) return undefined;
-    let active = true;
-    const routeList = data.routes;
-    if (routeList.every((route) => Object.prototype.hasOwnProperty.call(data.stopsByRoute, route._id) && Object.prototype.hasOwnProperty.call(data.alertsByRoute, route._id))) return undefined;
-    setRouteDetailsLoading(true);
-    async function loadRouteDetails() {
-      const [stopResults, alertResults] = await Promise.all([
-        Promise.all(routeList.map(async (route) => {
-          try { return { routeId: route._id, value: await apiRequest(`/stops/route/${encodeURIComponent(route._id)}`, { token }) }; }
-          catch (error) { return { routeId: route._id, value: [], error }; }
-        })),
-        Promise.all(routeList.map(async (route) => {
-          try { return { routeId: route._id, value: await apiRequest(`/route-alerts/route/${encodeURIComponent(route._id)}`, { token }) }; }
-          catch (error) { return { routeId: route._id, value: [], error }; }
-        })),
-      ]);
-      if (!active) return;
-      const stopsByRoute = Object.fromEntries(stopResults.map(({ routeId, value }) => [routeId, Array.isArray(value) ? value : []]));
-      const alertsByRoute = Object.fromEntries(alertResults.map(({ routeId, value }) => [routeId, Array.isArray(value) ? value : []]));
-      setData((current) => ({ ...current, stopsByRoute, alertsByRoute }));
-      setRouteDetailsLoading(false);
-      const detailErrors = [...stopResults, ...alertResults].filter((item) => item.error).map((item) => ({ key: `route details: ${item.routeId}`, message: item.error.message }));
-      setDataErrors((current) => [...current.filter((item) => !item.key.startsWith("route details:")), ...detailErrors]);
-    }
-    loadRouteDetails();
-    return () => { active = false; };
-  }, [activeTab, sessionState, token, data.routes, data.stopsByRoute, data.alertsByRoute]);
-  useEffect(() => {
-    if (sessionState !== "ready" || activeTab !== "routes" || !token) return undefined;
-    let active = true;
-    const pollOperatingState = async () => {
-      try {
-        const [buses, shifts] = await Promise.all([apiRequest("/buses", { token }), apiRequest("/admin/shifts", { token })]);
-        if (active) setData(current => ({ ...current, buses, shifts }));
-      } catch (error) {
-        if (active) setDataErrors(current => [...current.filter(item => item.key !== "live operating state"), { key: "live operating state", message: error.message }]);
-      }
-    };
-    const timer = window.setInterval(pollOperatingState, 30000);
-    const onVisibility = () => { if (document.visibilityState === "visible") pollOperatingState(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
-  }, [activeTab, sessionState, token]);
+    if (sessionState !== "ready" || activeTab !== "routes" || !token) return;
+    pollOperatingState().catch((error) => setDataErrors(current => [...current.filter(item => item.key !== "live operating state"), { key: "live operating state", message: error.message }]));
+  }, [activeTab, sessionState, token, pollOperatingState]);
   async function mutate(action, successText) {
     if (!token || busy) return false;
     setBusy(true); setNotice(null);
@@ -181,10 +158,6 @@ export default function AdminHomePage() {
       setRefreshKey((key) => key + 1);
       return true;
     } catch (error) {
-      if (error.status === 401) {
-        try { await apiRequest("/auth/profile", { token }); }
-        catch (profileError) { if (profileError.status === 401) { clearSessionToken("admin"); setToken(null); setAdmin(null); setSessionState("expired"); } }
-      }
       setNotice({ type: "error", text: error.message || "The change could not be saved. Please try again." });
       return false;
     } finally { setBusy(false); }
@@ -289,7 +262,6 @@ export default function AdminHomePage() {
 
       {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`rounded-2xl border px-4 py-3 text-sm ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
       {loadingTab === activeTab && <div role="status" className="rounded-2xl border border-[#dce2f1] bg-white px-4 py-3 text-sm text-[#68738e]">Loading {activeTab} data…</div>}
-{activeTab === "routes" && routeDetailsLoading && <div role="status" className="rounded-2xl border border-[#dce2f1] bg-white px-4 py-3 text-sm text-[#68738e]">Loading route stops and alerts…</div>}
             {dataErrors.length > 0 && <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Some dashboard sections could not load: {dataErrors.map((error) => error.key).join(", ")}. Use Refresh data to try again.</div>}
 
       <section id="summary" aria-label="Fleet summary" hidden={activeTab !== "overview"} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -1,8 +1,10 @@
 import "./globals.css";
-import "leaflet/dist/leaflet.css";
-import BootSplash from "@/components/layout/BootSplash";
+import { Suspense } from "react";
 import { ThemeBootstrap } from "@/components/layout/ProfileMenu";
 import ServiceWorkerRegister from "@/components/layout/ServiceWorkerRegister";
+import RouteAccessibility from "@/components/layout/RouteAccessibility";
+import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { AppModeProvider } from "@/lib/AppModeProvider";
 
 export const metadata = {
   title: "Smart Safar | Faisalabad Transit",
@@ -20,13 +22,14 @@ export const viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#111d3d",
+  themeColor: "#f4f5fb",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" style={{ backgroundColor: "#f4f5fb" }}>
       <head>
+        <script src="/prepaint.js" />
         <link rel="preconnect" href="https://tile.openstreetmap.org" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
         <link rel="apple-touch-startup-image" href="/splash/apple-splash-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
@@ -37,10 +40,14 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-startup-image" href="/splash/apple-splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" />
       </head>
       <body>
-        <ServiceWorkerRegister />
-        <BootSplash />
-        <ThemeBootstrap />
-        {children}
+        <AppModeProvider>
+          <AuthProvider>
+            <ServiceWorkerRegister />
+            <Suspense fallback={null}><RouteAccessibility /></Suspense>
+            <ThemeBootstrap />
+            {children}
+          </AuthProvider>
+        </AppModeProvider>
       </body>
     </html>
   );

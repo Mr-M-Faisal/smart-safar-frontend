@@ -1,7 +1,8 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FAISALABAD_CENTER } from "@/data/faisalabad-demo";
+import { FAISALABAD_CENTER } from "@/data/mapConfig";
 
 const routeColors = ["#20bba5", "#7185c6", "#e49353", "#438fbb", "#b16baa", "#629a68"];
 

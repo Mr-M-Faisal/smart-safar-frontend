@@ -1,7 +1,10 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import usePolling from "@/lib/usePolling";
+import { subscribeBus } from "@/lib/realtime";
 
 function timeLabel(value) {
   return value ? new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(value)) : "Waiting for bus location";
@@ -35,11 +38,17 @@ export default function SharedTripViewer({ shareToken }) {
     setState("loading");
     setMessage("");
     refresh();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, 15000);
-    return () => window.clearInterval(timer);
   }, [refresh, shareToken]);
+  usePolling(refresh, 30000, { enabled: Boolean(shareToken && !["ended", "missing"].includes(state)) });
+
+  useEffect(() => {
+    const busId = trip?.bus?._id;
+    if (!busId) return undefined;
+    const onResume = () => void refresh();
+    window.addEventListener("smart-safar:realtime-resume", onResume);
+    const cleanup = subscribeBus(busId, { locationUpdate: (update) => setTrip((current) => current ? { ...current, bus: { ...current.bus, currentLocation: { latitude: update.latitude, longitude: update.longitude }, lastLocationUpdate: update.lastLocationUpdate, nextStop: update.nextStop, etaMinutes: update.etaMinutes } } : current) });
+    return () => { cleanup(); window.removeEventListener("smart-safar:realtime-resume", onResume); };
+  }, [trip?.bus?._id, refresh]);
 
   useEffect(() => {
     if (state !== "ready" || !mapContainer.current) return undefined;

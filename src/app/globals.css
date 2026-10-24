@@ -67,42 +67,27 @@ button, input, select, textarea { font: inherit; }
 .driver-scene::before { position: absolute; z-index: -1; inset: 0; content: ""; background-image: linear-gradient(125deg, rgba(238,242,252,.78), rgba(239,242,250,.88)), url("/images/faisalabad-clock-tower.jpg"); background-position: center; background-size: cover; pointer-events: none; }
 .driver-glass { background: rgba(255,255,255,.78); backdrop-filter: blur(16px); }
 
-.boot-splash {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: #111d3d;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 250ms ease-out;
-}
-.boot-splash.is-hydrated {
-  opacity: 0;
-}
-.boot-splash-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  color: #ffffff;
-  text-align: center;
-}
-.boot-splash-brand span {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.boot-splash-brand small {
-  font-size: 0.65rem;
-  letter-spacing: 0.18em;
-  color: #a5f1df;
-  font-weight: 600;
+.m-app-stage { min-height: 100dvh; width: 100%; overflow-x: clip; background: #f4f5fb; }
+.m-app-frame { min-height: 100dvh; width: 100%; margin-inline: auto; background: #f4f5fb; }
+.m-app-content { min-height: 100dvh; overflow-x: clip; }
+.m-app-preview-banner { display: none; }
+@media (min-width: 1024px) {
+  html[data-app-mode="app"] .m-app-stage[data-mode="web"] { display: block; padding: 0; background: #f4f5fb; }
+  html[data-app-mode="app"] .m-app-stage[data-mode="web"] .m-app-frame { width: 100%; min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  html[data-app-mode="app"] .m-app-stage[data-mode="web"] .m-app-content { min-height: 100dvh; }
+  html[data-app-mode="app"] .m-app-stage[data-mode="web"] .m-app-preview-banner { display: none; }
+  .m-app-stage[data-mode="web"] { display: flex; justify-content: center; padding: 24px 12px; background: #e8ebf5; }
+  .m-app-stage[data-mode="web"] .m-app-frame { width: min(430px, calc(100vw - 24px)); min-height: calc(100dvh - 48px); overflow: hidden; border: 1px solid #d5dbee; border-radius: 24px; background: #f4f5fb; box-shadow: 0 24px 72px rgba(35,49,87,.18); }
+  .m-app-stage[data-mode="web"] .m-app-content { min-height: calc(100dvh - 90px); }
+  .m-app-stage[data-mode="web"] .m-app-preview-banner { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 4px; border-bottom: 1px solid #dce2f1; background: #fff; padding: 7px 10px; color: #68738e; font-size: 10px; text-align: center; }
+  .m-app-preview-banner a { color: #465a9c; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 }
 
+
 .ss-leaflet-marker { background: transparent; border: 0; }
+.long-content-list { content-visibility: auto; contain-intrinsic-size: auto 500px; }
+.ss-bus-cluster-wrap { background: transparent; border: 0; }
+.ss-bus-cluster { display: grid; width: 42px; height: 42px; place-items: center; border: 3px solid #fff; border-radius: 999px; background: linear-gradient(145deg, #263a70, #536bb7); color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 5px 16px rgba(28,54,101,.3); }
 .ss-bus-pin {
   display: grid;
   width: 38px;
@@ -128,11 +113,15 @@ button, input, select, textarea { font: inherit; }
 .animate-glow { animation: glow 3.2s ease-in-out infinite; }
 .route-dash { animation: dash 18s linear infinite; }
 .reveal-on-scroll {
+  opacity: 1;
+  transform: none;
+}
+.js .reveal-on-scroll {
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 420ms ease var(--reveal-delay, 0ms), transform 420ms cubic-bezier(.2,.75,.25,1) var(--reveal-delay, 0ms);
 }
-.reveal-on-scroll.is-visible { opacity: 1; transform: translateY(0); }
+.js .reveal-on-scroll.is-visible { opacity: 1; transform: translateY(0); }
 
 @keyframes enter-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
@@ -143,7 +132,7 @@ button, input, select, textarea { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .route-bus { visibility: hidden; }
-  .reveal-on-scroll { opacity: 1; transform: none; }
+  .js .reveal-on-scroll { opacity: 1; transform: none; }
 }
 
 @media (max-width: 640px) {
@@ -330,6 +319,18 @@ html[data-theme="dark"] .driver-sidebar::before {
 @media (prefers-reduced-motion: reduce) {
   .driver-nav-link:hover { transform: none; }
 }
+
+@media (max-width: 767px) {
+  .clock-tower-photo, .map-halo, .animate-float, .animate-glow { animation: none !important; will-change: auto; }
+  .driver-glass, .public-header, .role-layout > aside, .long-content-list .backdrop-blur { backdrop-filter: none; }
+  .driver-glass { background: rgba(255,255,255,.96); }
+  .public-header { background: #eef0fa; }
+}
+
+.m-app-stage .clock-tower-photo,
+.m-app-stage .map-halo,
+.m-app-stage .animate-float,
+.m-app-stage .animate-glow { animation: none !important; will-change: auto; }
 
 @keyframes safar-modal-backdrop-in {
   from { opacity: 0; }

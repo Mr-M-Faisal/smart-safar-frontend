@@ -1,18 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, readSessionToken } from "@/lib/session";
+import { clearSessionToken } from "@/lib/session";
 import PaymentStatus from "@/components/booking/PaymentStatus";
 import SeatPicker from "@/components/booking/SeatPicker";
 import PaymentOptions from "@/components/booking/PaymentOptions";
-import { createTransitSocket } from "@/lib/socket";
+import { subscribeBus, subscribePassengerBookings } from "@/lib/realtime";
+import usePolling from "@/lib/usePolling";
 import PublicLayout from "@/components/layout/PublicLayout";
 import BookingConfirmationModal from "@/components/booking/BookingConfirmationModal";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 import busListState from "@/lib/busListState.cjs";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { RequireRole } from "@/lib/auth/AuthProvider";
 const { getBusListViewState } = busListState;
 
 function getLocation() {
@@ -40,8 +44,11 @@ function PanelTitle({ eyebrow, title, note }) {
   return <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#536bb7]">{eyebrow}</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-[#293553]">{title}</h2></div>{note && <p className="text-xs text-[#8992a8]">{note}</p>}</div>;
 }
 
-function PassengerDashboard() {
+function PassengerDashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const auth = useAuth();
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
   const [sessionState, setSessionState] = useState("loading");
@@ -53,6 +60,7 @@ function PassengerDashboard() {
   const [routeAlerts, setRouteAlerts] = useState([]);
   const [routeAlertsState, setRouteAlertsState] = useState("idle");
   const [routeAlertsRefresh, setRouteAlertsRefresh] = useState(0);
+  const [bootstrapAlerts, setBootstrapAlerts] = useState([]);
   const [bookingForm, setBookingForm] = useState({ routeId: "", busId: "", seatNumber: "", paymentMethod: "cash", shareLocation: false });
   const [activeRouteBuses, setActiveRouteBuses] = useState([]);
   const [activeRouteBusesState, setActiveRouteBusesState] = useState("idle");
@@ -66,7 +74,7 @@ function PassengerDashboard() {
   const [notice, setNotice] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [shareUrl, setShareUrl] = useState("");
-  const [activeTab, setActiveTab] = useState("book");
+  const [activeTab, setActiveTab] = useState(() => ["history", "security", "report"].includes(requestedTab) ? requestedTab : "book");
   const [bookingConfirmation, setBookingConfirmation] = useState(null);
   useEffect(() => {
     const handleExpired = (event) => { if (event.detail?.role === "commuter") { setToken(null); setProfile(null); setSessionState("expired"); } };
@@ -74,29 +82,28 @@ function PassengerDashboard() {
     return () => window.removeEventListener("smart-safar:auth-expired", handleExpired);
   }, []);
   useEffect(() => {
-    const syncTabFromHash = () => { const hash = window.location.hash.slice(1); setActiveTab(["history", "security", "report"].includes(hash) ? hash : "book"); };
-    syncTabFromHash();
-    window.addEventListener("hashchange", syncTabFromHash);
-    return () => window.removeEventListener("hashchange", syncTabFromHash);
-  }, []);
+    setActiveTab(["history", "security", "report"].includes(requestedTab) ? requestedTab : "book");
+  }, [requestedTab]);
   const selectedRouteBuses = activeRouteBuses;
   const selectedBus = selectedRouteBuses.find((bus) => String(bus._id) === String(bookingForm.busId)) || null;
   const freeSeatsOnRoute = Number(selectedBus?.availableSeats) || 0;
   const activeBusesView = getBusListViewState({ loading: activeRouteBusesState === "loading", error: activeRouteBusesState === "error" ? activeRouteBusesError : null, buses: selectedRouteBuses });
 
   useEffect(() => {
+    if (sessionState !== "ready" || !token) return undefined;
+    const onBooking = (update) => { setNotice({ type: "error", text: update.message || `Booking status: ${update.status}` }); setRefreshKey(key => key + 1); };
+    return subscribePassengerBookings(token, { bookingStatusUpdate: onBooking });
+  }, [sessionState, token]);
+
+  useEffect(() => {
     const busIds = buses.map((bus) => bus._id).filter(Boolean);
     if (sessionState !== "ready" || !busIds.length) return undefined;
-    const socket = createTransitSocket();
-    socket.on("connect", () => { busIds.forEach((id) => socket.emit("watchBus", id)); socket.emit("watchPassengerBookings", { token }); });
-    socket.on("seatStateUpdate", (update) => {
+    const cleanups = busIds.map((id) => subscribeBus(id, { seatStateUpdate: (update) => {
       if (!update?.busId) return;
       if (String(update.busId) === String(bookingForm.busId)) setSeatMap(update.seats || []);
       setActiveRouteBuses((current) => current.map((bus) => String(bus._id) === String(update.busId) ? { ...bus, availableSeats: update.available } : bus));
-    });
-    socket.on("bookingStatusUpdate", (update) => { setNotice({ type: "error", text: update.message || `Booking status: ${update.status}` }); setRefreshKey(key => key + 1); });
-    socket.connect();
-    return () => socket.disconnect();
+    } }));
+    return () => cleanups.forEach((cleanup) => cleanup());
   }, [buses.map((bus) => bus._id).filter(Boolean).join(","), sessionState, bookingForm.busId, token]);
 
   useEffect(() => {
@@ -107,7 +114,7 @@ function PassengerDashboard() {
     setActiveRouteBusesState("loading");
     const refreshRouteBuses = async () => {
       try {
-        const result = await apiRequest(`/buses/route/${encodeURIComponent(bookingForm.routeId)}/active`, { token });
+        const result = await apiRequest(`/buses/route/${encodeURIComponent(bookingForm.routeId)}/active`);
         if (!active || !Array.isArray(result)) return;
         setActiveRouteBuses(result);
         setActiveRouteBusesError(null);
@@ -124,26 +131,33 @@ function PassengerDashboard() {
       }
     };
     refreshRouteBuses();
-    const timer = window.setInterval(refreshRouteBuses, 30000);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") refreshRouteBuses();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
+    return () => { active = false; };
   }, [activeTab, bookingForm.routeId, sessionState, token, routeBusesReload]);
+  const refreshActiveBuses = useCallback(async () => {
+    if (!bookingForm.routeId || activeTab !== "book") return;
+    const result = await apiRequest(`/buses/route/${encodeURIComponent(bookingForm.routeId)}/active`);
+    if (!Array.isArray(result)) throw new Error("The transit server returned an unexpected bus list.");
+    setActiveRouteBuses(result); setActiveRouteBusesError(null); setActiveRouteBusesState("ready");
+  }, [bookingForm.routeId, activeTab]);
+  usePolling(refreshActiveBuses, 30000, { enabled: sessionState === "ready" && Boolean(bookingForm.routeId) && activeTab === "book" });
 
   useEffect(() => {
     if (!token || !bookingForm.busId || activeTab !== "book") { setSeatMap([]); return undefined; }
     let active = true;
     const refresh = async () => {
-      try { const result = await apiRequest(`/buses/${encodeURIComponent(bookingForm.busId)}/seats`, { token }); if (active) { setSeatMap(result.seats || []); setActiveRouteBuses(current => current.map(bus => String(bus._id) === String(bookingForm.busId) ? { ...bus, availableSeats: result.available } : bus)); } }
+      try { const result = await apiRequest(`/buses/${encodeURIComponent(bookingForm.busId)}/seats`); if (active) { setSeatMap(result.seats || []); setActiveRouteBuses(current => current.map(bus => String(bus._id) === String(bookingForm.busId) ? { ...bus, availableSeats: result.available } : bus)); } }
       catch { if (active) setSeatMap([]); }
     };
-    refresh(); const timer = window.setInterval(refresh, 30000);
-    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
+    refresh();
+    return () => { active = false; };
   }, [token, bookingForm.busId, activeTab, refreshKey]);
+  const refreshSeats = useCallback(async () => {
+    if (!bookingForm.busId || activeTab !== "book") return;
+    const result = await apiRequest(`/buses/${encodeURIComponent(bookingForm.busId)}/seats`);
+    setSeatMap(result.seats || []);
+    setActiveRouteBuses(current => current.map(bus => String(bus._id) === String(bookingForm.busId) ? { ...bus, availableSeats: result.available } : bus));
+  }, [bookingForm.busId, activeTab]);
+  usePolling(refreshSeats, 30000, { enabled: Boolean(token && bookingForm.busId && activeTab === "book") });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -157,31 +171,27 @@ function PassengerDashboard() {
   }, [routes]);
 
   const reload = useCallback(async (sessionToken, isActive = () => true) => {
-    const currentProfile = await apiRequest("/auth/profile", { token: sessionToken });
-    if (!isActive()) return;
-    if (currentProfile.role !== "commuter") {
+    const currentProfile = auth.user;
+    if (auth.role !== "commuter" || !currentProfile) {
       setToken(null); setProfile(null); setSessionState("denied"); return;
     }
     setProfile(currentProfile);
-    const paths = ["/routes", "/buses", "/bookings/me", "/safety/sessions/me"];
-    const results = await Promise.all(paths.map((path) => apiRequest(path, { token: sessionToken }).catch((error) => ({ error }))));
+    const bootstrap = await apiRequest("/passenger/bootstrap", { token: sessionToken });
     if (!isActive()) return;
-    if (results.some((result) => result?.error?.status === 401)) throw Object.assign(new Error("Your session expired. Sign in again."), { status: 401 });
-    const [routeResult, busResult, bookingResult, safetyResult] = results;
-    const requestErrors = results.map((result, index) => result?.error ? paths[index].replace(/\//g, "") : null).filter(Boolean);
-    setRoutes(Array.isArray(routeResult) ? routeResult : []);
-    setBuses(Array.isArray(busResult) ? busResult : []);
-    setBookings(Array.isArray(bookingResult) ? bookingResult : []);
-    setSafetySessions(Array.isArray(safetyResult) ? safetyResult : []);
-    if (requestErrors.length) setNotice({ type: "error", text: `Some passenger data could not load: ${requestErrors.join(", ")}. Refresh to retry.` });
+    setRoutes(Array.isArray(bootstrap.routes) ? bootstrap.routes : []);
+    setBuses(Array.isArray(bootstrap.buses) ? bootstrap.buses : []);
+    setBookings(Array.isArray(bootstrap.bookings) ? bootstrap.bookings : []);
+    setSafetySessions(Array.isArray(bootstrap.safetySessions) ? bootstrap.safetySessions : []);
+    setBootstrapAlerts(Array.isArray(bootstrap.routeAlerts) ? bootstrap.routeAlerts : []);
     setSessionState("ready");
-  }, []);
+  }, [auth.role, auth.user]);
 
   useEffect(() => {
     let active = true;
-    const sessionToken = readSessionToken("commuter");
+    if (auth.status === "loading" || (auth.status === "authenticated" && !auth.validated)) return () => { active = false; };
+    const sessionToken = auth.status === "authenticated" && auth.role === "commuter" ? auth.token : null;
     setToken(sessionToken);
-    if (!sessionToken) { setSessionState("signed-out"); return () => { active = false; }; }
+    if (!sessionToken) { setSessionState(auth.status === "authenticated" ? "denied" : "signed-out"); return () => { active = false; }; }
     setSessionState((current) => current === "ready" ? "ready" : "loading");
     reload(sessionToken, () => active).catch((error) => {
       if (!active) return;
@@ -189,7 +199,7 @@ function PassengerDashboard() {
       else { setSessionState("error"); setNotice({ type: "error", text: error.message || "Could not load your passenger account." }); }
     });
     return () => { active = false; };
-  }, [reload, refreshKey]);
+  }, [auth.status, auth.validated, auth.role, auth.token, reload, refreshKey]);
 
   useEffect(() => {
     if (sessionState !== "signed-out" && sessionState !== "expired") return;
@@ -202,15 +212,13 @@ function PassengerDashboard() {
   }, [sessionState, router]);
 
   useEffect(() => {
-    let active = true;
     const routeId = bookingForm.routeId;
-    if (!token || !routeId) { setRouteAlerts([]); setRouteAlertsState("idle"); return () => { active = false; }; }
+    if (!token || !routeId) { setRouteAlerts([]); setRouteAlertsState("idle"); return undefined; }
     setRouteAlertsState("loading");
-    apiRequest(`/route-alerts/route/${encodeURIComponent(routeId)}`, { token })
-      .then((result) => { if (active) { setRouteAlerts(Array.isArray(result) ? result : []); setRouteAlertsState("ready"); } })
-      .catch(() => { if (active) { setRouteAlerts([]); setRouteAlertsState("error"); } });
-    return () => { active = false; };
-  }, [token, bookingForm.routeId, refreshKey, routeAlertsRefresh]);
+    setRouteAlerts(bootstrapAlerts.filter((alert) => String(alert.route?._id || alert.route) === String(routeId)));
+    setRouteAlertsState("ready");
+    return undefined;
+  }, [token, bookingForm.routeId, refreshKey, routeAlertsRefresh, bootstrapAlerts]);
 
   async function perform(label, action, success) {
     if (!token || busy) return false;
@@ -264,9 +272,12 @@ function PassengerDashboard() {
 
   const chooseDashboardTab = useCallback((tab) => {
     setActiveTab(tab);
-    const hash = tab === "book" ? "booking" : tab;
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${hash}`);
-  }, []);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "book") params.delete("tab");
+    else params.set("tab", tab);
+    const query = params.toString();
+    router.replace(`/passenger${query ? `?${query}` : ""}${tab === "book" ? "#booking" : ""}`, { scroll: false });
+  }, [router, searchParams]);
   const closeBookingConfirmation = useCallback(() => setBookingConfirmation(null), []);
 
   async function toggleBookingLocation(booking) {
@@ -281,7 +292,10 @@ function PassengerDashboard() {
     if (booking.status !== "confirmed") return;
     const paymentNote = booking.paymentStatus === "paid" ? " Your payment will remain marked as paid; refunds are not available in the current app." : "";
     if (!window.confirm(`Cancel this booking? The seat will be released.${paymentNote}`)) return;
-    await perform(`cancel-${booking._id}`, () => apiRequest(`/bookings/${encodeURIComponent(booking._id)}/cancel`, { method: "PATCH", token }), () => `Booking cancelled and the seat released.${paymentNote}`);
+    const previousBookings = bookings;
+    setBookings((current) => current.map((item) => String(item._id) === String(booking._id) ? { ...item, status: "cancelled" } : item));
+    const result = await perform(`cancel-${booking._id}`, () => apiRequest(`/bookings/${encodeURIComponent(booking._id)}/cancel`, { method: "PATCH", token }), () => `Booking cancelled and the seat released.${paymentNote}`);
+    if (!result) setBookings(previousBookings);
   }
 
   async function startSafetyShare(event) {
@@ -367,6 +381,10 @@ function PassengerDashboard() {
   );
 }
 
+function PassengerDashboard() {
+  return <Suspense fallback={<main className="min-h-[70vh] bg-[#f4f5fb] p-6"><p className="mx-auto max-w-2xl rounded-2xl bg-white p-5 text-sm text-[#68738e]">Loading your passenger workspace…</p></main>}><PassengerDashboardContent /></Suspense>;
+}
+
 export default function PassengerPage() {
-  return <PublicLayout><PassengerDashboard /></PublicLayout>;
+  return <PublicLayout><RequireRole roles="commuter"><PassengerDashboard /></RequireRole></PublicLayout>;
 }

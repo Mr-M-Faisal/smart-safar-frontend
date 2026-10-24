@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import BookingLink from "@/components/layout/BookingLink";
@@ -39,7 +40,7 @@ export default function HomePage() {
 
         <div className="animate-enter-delay relative mx-auto w-full max-w-[620px] lg:ml-auto">
           <div className="clock-tower-card group relative overflow-hidden rounded-[1.35rem] border border-white/30 bg-[#192b58] shadow-[0_20px_52px_rgba(0,0,0,.28)] sm:rounded-[2rem] sm:shadow-[0_35px_100px_rgba(0,0,0,.34)]">
-            <img src="/images/faisalabad-clock-tower.jpg" alt="Ghanta Ghar, Faisalabad’s historic Clock Tower at sunset" width="620" height="460" fetchPriority="high" className="clock-tower-photo h-[220px] w-full object-cover object-center sm:h-[300px] lg:h-[460px]" />
+            <Image src="/images/faisalabad-clock-tower.webp" alt="Ghanta Ghar, Faisalabad’s historic Clock Tower at sunset" width={767} height={418} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 620px" priority className="clock-tower-photo h-[220px] w-full object-cover object-center sm:h-[300px] lg:h-[460px]" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#101d3c]/85 via-transparent to-[#101d3c]/10" />
             <div className="absolute inset-x-4 bottom-4 flex items-end justify-between gap-3 text-white sm:inset-x-7 sm:bottom-7">
               <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#a8efdf]">The heart of Lyallpur</p><p className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Ghanta Ghar</p><p className="mt-1 text-xs text-white/75">Faisalabad, Punjab</p><p className="mt-1 text-[9px] text-white/60">Photo · Government of Punjab</p></div>

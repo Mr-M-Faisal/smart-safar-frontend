@@ -1,5 +1,6 @@
 import AdminLayout from "@/components/layout/AdminLayout";
+import { RequireRole } from "@/lib/auth/AuthProvider";
 
 export default function AdminRootLayout({ children }) {
-  return <AdminLayout>{children}</AdminLayout>;
+  return <RequireRole roles="admin"><AdminLayout>{children}</AdminLayout></RequireRole>;
 }

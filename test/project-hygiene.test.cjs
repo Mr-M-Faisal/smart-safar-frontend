@@ -1,0 +1,19 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+const ignoreFiles = [path.join(root, '.gitignore'), path.resolve(root, '..', 'backend', '.gitignore')];
+for (const filename of ignoreFiles) {
+  const contents = fs.readFileSync(filename, 'utf8');
+  for (const entry of ['node_modules/', '.env*', '!.env.example']) {
+    assert.ok(contents.split(/\r?\n/).includes(entry), `${path.basename(path.dirname(filename))}/.gitignore must contain ${entry}`);
+  }
+}
+
+const securityGuide = fs.readFileSync(path.join(root, 'docs', 'SECURITY.md'), 'utf8');
+for (const required of ['localStorage', 'different domains', '.env.example', 'node_modules', '.next', 'report-only']) {
+  assert.ok(securityGuide.includes(required), `Security guide should document ${required}`);
+}
+
+console.log('project hygiene tests passed');

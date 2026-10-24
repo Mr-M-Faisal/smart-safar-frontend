@@ -3,11 +3,16 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest, readSavedCache } from "@/lib/api";
-import { demoStopsForRoute, faisalabadDemoRoutes } from "@/data/faisalabad-demo";
+import { useRoutes } from "@/lib/data/hooks";
+import formatCacheAge from "@/lib/data/formatCacheAge";
+import { demoModeEnabled, loadDemoData } from "@/lib/data/demoData";
+import { getDataViewState } from "@/lib/data/viewState.cjs";
+import useDelayedLoading from "@/lib/useDelayedLoading";
+import { SkeletonList } from "@/components/ui/skeleton/Skeleton";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import BookingLink from "@/components/layout/BookingLink";
 import { saveBookingSelection } from "@/lib/bookingSelection";
+import { getLocationFreshness, useLocationClock } from "@/lib/locationFreshness";
 
 const LeafletRouteMap = dynamic(() => import("@/components/map/LeafletRouteMap"), {
   ssr: false,
@@ -23,122 +28,55 @@ function busStatusLabel(status) {
 }
 
 export default function RouteExplorer() {
-  const firstDemoRoute = faisalabadDemoRoutes[0];
-  const [routes, setRoutes] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data;
-    }
-    return faisalabadDemoRoutes;
-  });
-  const [selectedRoute, setSelectedRoute] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return saved.data[0];
-    }
-    return firstDemoRoute;
-  });
-  const [stops, setStops] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
-        const savedStops = readSavedCache(`/stops/route/${saved.data[0]._id}`);
-        if (savedStops?.data && Array.isArray(savedStops.data) && savedStops.data.length) return savedStops.data;
-      }
-    }
-    return demoStopsForRoute(firstDemoRoute);
-  });
-  const [buses, setBuses] = useState(() => firstDemoRoute.buses || []);
+  const locationClock = useLocationClock();
+  const routeResource = useRoutes();
+  const initialRoutes = Array.isArray(routeResource.data) ? routeResource.data : [];
+  const [routes, setRoutes] = useState(initialRoutes);
+  const [selectedRoute, setSelectedRoute] = useState(initialRoutes[0] || null);
+  const [demoData, setDemoData] = useState(null);
   const [query, setQuery] = useState("");
-  const [routesState, setRoutesState] = useState("ready");
-  const [stopsState, setStopsState] = useState("ready");
-  const [busesState, setBusesState] = useState("ready");
-  const [dataSource, setDataSource] = useState(() => {
-    if (typeof window !== "undefined") {
-      const saved = readSavedCache("/routes");
-      if (saved?.data && Array.isArray(saved.data) && saved.data.length) return "saved";
-    }
-    return "demo";
-  });
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [checkingBackend, setCheckingBackend] = useState(true);
+  const [routesState, setRoutesState] = useState(initialRoutes.length ? "ready" : "loading");
+  const [dataSource, setDataSource] = useState(() => routeResource.hasCache ? "saved" : initialRoutes.length ? "backend" : "loading");
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const retryData = () => { void routeResource.refresh(); };
+  const routeViewState = getDataViewState({ isLoading: routesState === "loading" || routeResource.isLoading, error: routeResource.error, data: routes, hasCache: routeResource.hasCache });
+  const showRouteSkeleton = useDelayedLoading(routeViewState === "loading");
+  const stops = useMemo(() => {
+    if (!selectedRoute) return [];
+    if (dataSource === "demo") return demoData?.demoStopsForRoute(selectedRoute) || [];
+    return Array.isArray(selectedRoute.stops) ? selectedRoute.stops : [];
+  }, [selectedRoute, dataSource, demoData]);
+  const buses = Array.isArray(selectedRoute?.buses) ? selectedRoute.buses : [];
+  const stopsState = routesState === "loading" ? "loading" : dataSource === "error" ? "error" : selectedRoute ? "ready" : "empty";
+  const busesState = routesState === "loading" ? "loading" : dataSource === "error" ? "error" : selectedRoute ? "ready" : "empty";
 
   useEffect(() => {
-    let mounted = true;
-    setCheckingBackend(true);
-    apiRequest("/routes")
-      .then((result) => {
-        if (!mounted) return;
-        const backendRoutes = Array.isArray(result) ? result : [];
-        if (backendRoutes.length) {
-          setRoutes(backendRoutes);
-          setSelectedRoute((current) => backendRoutes.find((route) => route._id === current?._id) || backendRoutes[0]);
-          setDataSource(typeof navigator !== "undefined" && !navigator.onLine ? "saved" : "backend");
+    let active = true;
+    if (Array.isArray(routeResource.data)) {
+      const backendRoutes = routeResource.data;
+      setRoutes(backendRoutes);
+      setSelectedRoute((current) => backendRoutes.find((route) => String(route._id) === String(current?._id)) || backendRoutes[0] || null);
+      if (backendRoutes.length) setDataSource(routeResource.hasCache ? "saved" : "backend");
+      else setDataSource("empty");
+      setRoutesState("ready");
+    } else if (routeResource.error) {
+      const showFallback = async () => {
+        if (demoModeEnabled) {
+          const data = await loadDemoData();
+          if (!active) return;
+          setDemoData(data);
+          setRoutes(data?.faisalabadDemoRoutes || []);
+          setSelectedRoute(data?.faisalabadDemoRoutes?.[0] || null);
+          setDataSource(data?.faisalabadDemoRoutes?.length ? "demo" : "error");
         } else {
-          setRoutes(faisalabadDemoRoutes);
-          setSelectedRoute((current) => faisalabadDemoRoutes.find((route) => route._id === current?._id) || faisalabadDemoRoutes[0]);
-          setDataSource("demo");
+          setRoutes([]); setSelectedRoute(null); setDataSource("error");
         }
         setRoutesState("ready");
-        setCheckingBackend(false);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        const saved = readSavedCache("/routes");
-        if (saved?.data && Array.isArray(saved.data) && saved.data.length) {
-          setRoutes(saved.data);
-          setSelectedRoute((current) => saved.data.find((route) => route._id === current?._id) || saved.data[0]);
-          setDataSource("saved");
-        } else {
-          setRoutes(faisalabadDemoRoutes);
-          setSelectedRoute((current) => faisalabadDemoRoutes.find((route) => route._id === current?._id) || faisalabadDemoRoutes[0]);
-          setDataSource("demo");
-        }
-        setRoutesState("ready");
-        setCheckingBackend(false);
-      });
-
-    return () => { mounted = false; };
-  }, [refreshKey]);
-
-  useEffect(() => {
-    if (!selectedRoute?._id) {
-      setStops([]);
-      setBuses([]);
-      return undefined;
+      };
+      void showFallback();
     }
-
-    if (dataSource === "demo") {
-      setStops(demoStopsForRoute(selectedRoute));
-      setBuses(selectedRoute.buses || []);
-      setStopsState("ready");
-      setBusesState("ready");
-      return undefined;
-    }
-
-    let current = true;
-    setStopsState("loading");
-    setBusesState("loading");
-
-    apiRequest(`/stops/route/${encodeURIComponent(selectedRoute._id)}`)
-      .then((result) => {
-        if (!current) return;
-        setStops(Array.isArray(result) ? result : []);
-        setStopsState("ready");
-      })
-      .catch(() => { if (current) setStopsState("error"); });
-
-    apiRequest(`/buses?route=${encodeURIComponent(selectedRoute._id)}`)
-      .then((result) => {
-        if (!current) return;
-        setBuses(Array.isArray(result) ? result : []);
-        setBusesState("ready");
-      })
-      .catch(() => { if (current) setBusesState("error"); });
-
-    return () => { current = false; };
-  }, [selectedRoute?._id, dataSource]);
+    return () => { active = false; };
+  }, [routeResource.data, routeResource.error, routeResource.hasCache]);
 
   const filteredRoutes = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -165,27 +103,22 @@ export default function RouteExplorer() {
           </div>
         </RevealOnScroll>
 
-        {routesState === "loading" && (
-          <div className="mt-9 animate-pulse space-y-4 rounded-3xl border border-[#e2e5f1] bg-white p-8">
-            <div className="h-6 w-1/3 rounded-lg bg-slate-200" />
-            <div className="h-4 w-2/3 rounded-lg bg-slate-100" />
-            <div className="h-20 w-full rounded-2xl bg-slate-50" />
-          </div>
-        )}
+        {routesState === "loading" && showRouteSkeleton && <div className="mt-9"><SkeletonList count={3} /></div>}
+        {routesState === "ready" && dataSource === "error" && <div role="alert" className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900"><p>We couldn’t load real routes. Check your connection and try again.</p><button onClick={retryData} className="mt-3 min-h-10 rounded-lg bg-white px-4 font-semibold text-rose-800">Retry</button></div>}
 
         {routesState === "ready" && (
           <>
-            {dataSource === "demo" && <div className="mt-8 flex flex-col justify-between gap-2 rounded-2xl border border-[#cdd7f5] bg-[#e9edff] px-5 py-4 text-sm text-[#4e608f] sm:flex-row sm:items-center"><div><span><strong className="font-semibold text-[#3d559e]">Local demo data</strong> · sample Faisalabad routes and buses for exploring the interface.</span><span className="mt-1 block text-xs text-[#7583aa] sm:ml-2 sm:mt-0 sm:inline">{checkingBackend ? "Checking server in the background…" : "Available offline"}</span></div><button disabled={checkingBackend} onClick={() => setRefreshKey((key) => key + 1)} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#536bb7] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md disabled:cursor-wait disabled:opacity-60 sm:self-auto">{checkingBackend ? "Checking…" : "Try backend again"}</button></div>}
+            {dataSource === "demo" && <div className="mt-8 flex flex-col justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 sm:flex-row sm:items-center"><div><span><strong className="font-semibold">Demo data</strong> · illustrative routes and buses for this preview.</span></div><button onClick={retryData} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-amber-900 shadow-sm sm:self-auto">Retry real data</button></div>}
             {dataSource === "saved" && (
               <div className="mt-8 flex flex-col justify-between gap-2 rounded-2xl border border-slate-300 bg-slate-100 px-5 py-4 text-sm text-slate-700 sm:flex-row sm:items-center">
-                <div><span><strong className="font-semibold text-slate-900">Saved data</strong> · showing routes and stops saved from your last online session.</span><span className="mt-1 block text-xs text-slate-500 sm:ml-2 sm:mt-0 sm:inline">Offline mode</span></div>
-                <button disabled={checkingBackend} onClick={() => setRefreshKey((key) => key + 1)} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:shadow-md disabled:opacity-60 sm:self-auto">{checkingBackend ? "Checking…" : "Try backend again"}</button>
+                <div><span><strong className="font-semibold text-slate-900">Saved data</strong> · showing real routes and stops from your last online session.</span><span className="mt-1 block text-xs text-slate-500 sm:ml-2 sm:mt-0 sm:inline">Offline or refreshing{routeResource.cachedAt ? ` · ${formatCacheAge(routeResource.cachedAt)}` : ""}</span></div>
+                <button onClick={retryData} className="self-start rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm sm:self-auto">Retry connection</button>
               </div>
             )}
             {dataSource === "backend" && <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-[#bfe8dd] bg-[#e8faf4] px-4 py-2 text-xs font-semibold text-[#167b6e]"><span className="h-2 w-2 rounded-full bg-[#22bfa7]"/> Connected to transit server</div>}
 
-            {routes.length === 0 ? <div className="mt-8 rounded-3xl border border-[#e2e5f1] bg-white p-8 text-sm text-[#68738e]">No sample routes are available.</div> : <div className="mt-8 grid items-start gap-6 lg:grid-cols-[.95fr_1.05fr]">
-              <section aria-label="Available routes" className={`space-y-3 ${mobileDetailOpen ? "hidden lg:block" : ""}`}>
+            {routes.length === 0 && dataSource !== "error" ? <div className="mt-8 rounded-3xl border border-[#e2e5f1] bg-white p-8 text-sm text-[#68738e]">No routes are available right now.</div> : routes.length > 0 && <div className="mt-8 grid items-start gap-6 lg:grid-cols-[.95fr_1.05fr]">
+              <section aria-label="Available routes" className={`long-content-list space-y-3 ${mobileDetailOpen ? "hidden lg:block" : ""}`}>
                 <div className="mb-4 flex items-center justify-between px-1"><h2 className="text-sm font-semibold text-[#525f7e]">Available routes</h2><span className="rounded-full bg-[#e4e8f7] px-3 py-1 text-xs font-semibold text-[#536bb7]">{filteredRoutes.length} routes</span></div>
                 {filteredRoutes.map((route, index) => {
                   const selected = String(route._id) === String(selectedRoute?._id);
@@ -204,7 +137,7 @@ export default function RouteExplorer() {
                 {selectedRoute ? <>
                   <button type="button" onClick={() => setMobileDetailOpen(false)} className="mb-5 inline-flex min-h-10 items-center gap-2 rounded-full border border-[#d9def0] bg-white px-4 text-xs font-semibold text-[#536bb7] lg:hidden"><span aria-hidden="true">←</span> All routes</button>
                   <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Route details</p><h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#263250]">{selectedRoute.routeName}</h2><p className="mt-1 text-sm text-[#68738e]">{selectedRoute.startPoint} <span className="px-1 text-[#22a992]">→</span> {selectedRoute.endPoint}</p></div><span className="rounded-2xl bg-white/80 px-3 py-2 text-xs font-semibold text-[#536bb7] shadow-sm">{stopsState === "ready" ? `${stops.length} stops` : "Stops"}</span></div>
-                  <BookingLink routeId={dataSource === "backend" ? selectedRoute._id : undefined} className="mt-4 flex min-h-12 items-center justify-between rounded-xl bg-[#536bb7] px-4 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f]"><span>Choose seat &amp; payment</span><span aria-hidden="true">→</span></BookingLink>
+                  <BookingLink routeId={dataSource === "backend" || dataSource === "saved" ? selectedRoute._id : undefined} className="mt-4 flex min-h-12 items-center justify-between rounded-xl bg-[#536bb7] px-4 text-sm font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f]"><span>Choose seat &amp; payment</span><span aria-hidden="true">→</span></BookingLink>
                   <div className="mt-5 overflow-hidden rounded-3xl border border-white/90 bg-white p-2 shadow-[0_8px_24px_rgba(53,67,112,.06)]">
                     <div className="mb-2 flex items-center justify-between px-2 pt-1"><h3 className="text-xs font-semibold text-[#394562]">Route map</h3><span className="text-[10px] font-medium text-[#8992a8]">{stops.length ? `${stops.length} stops shown` : "Loading route points…"}</span></div>
                     <div className="h-44 overflow-hidden rounded-2xl sm:h-52">
@@ -214,7 +147,7 @@ export default function RouteExplorer() {
                   <div className="mt-6 rounded-3xl border border-white/90 bg-[#fffdf8] p-5 shadow-[0_8px_24px_rgba(53,67,112,.06)] sm:p-6">
                     <h3 className="text-sm font-semibold text-[#394562]">Journey stops</h3>
                     {stopsState === "loading" && <p className="mt-5 text-sm text-[#7b859c]">Loading stops…</p>}
-                    {stopsState === "error" && <div role="alert" className="mt-5"><p className="text-sm text-[#9a5a50]">Stops could not be loaded.</p><button onClick={() => setRefreshKey((key) => key + 1)} className="mt-3 rounded-full border border-[#d9b6b0] px-4 py-2 text-xs font-semibold text-[#75433d] transition hover:bg-[#fff1ed]">Retry data</button></div>}
+                    {stopsState === "error" && <div role="alert" className="mt-5"><p className="text-sm text-[#9a5a50]">Stops could not be loaded.</p><button onClick={retryData} className="mt-3 rounded-full border border-[#d9b6b0] px-4 py-2 text-xs font-semibold text-[#75433d] transition hover:bg-[#fff1ed]">Retry data</button></div>}
                     {stopsState === "ready" && stops.length === 0 && <p className="mt-5 text-sm text-[#7b859c]">No stops have been added to this route yet.</p>}
                     {stopsState === "ready" && stops.length > 0 && <ol className="mt-5 space-y-0">{stops.map((stop, index) => <li key={stop._id || `${stop.stopOrder}-${stop.stopName}`} className="relative flex gap-4 pb-5 last:pb-0"><span className="relative flex w-4 shrink-0 justify-center"><span className={`z-10 mt-1.5 h-3 w-3 rounded-full border-[3px] border-[#fffdf8] ring-1 ${index === 0 || index === stops.length - 1 ? "bg-[#20bba5] ring-[#20bba5]" : "bg-[#758acb] ring-[#758acb]"} `}/>{index < stops.length - 1 && <span className="absolute top-4 h-full w-px bg-[#cdd5ee]"/>}</span><span className="min-w-0"><span className="block text-sm font-semibold text-[#394562]">{stop.stopName}</span><span className="mt-1 block text-xs text-[#8992a8]">Stop {stop.stopOrder ?? index + 1}</span></span></li>)}</ol>}
                   </div>
@@ -223,9 +156,9 @@ export default function RouteExplorer() {
                     {busesState === "loading" && <p className="rounded-2xl bg-white/70 p-4 text-sm text-[#7b859c]">Loading buses…</p>}
                     {busesState === "error" && <p role="alert" className="rounded-2xl bg-[#fff7f5] p-4 text-sm text-[#9a5a50]">Bus information is temporarily unavailable.</p>}
                     {busesState === "ready" && buses.length === 0 && <p className="rounded-2xl bg-white/70 p-4 text-sm text-[#7b859c]">No buses are assigned to this route yet.</p>}
-                    {busesState === "ready" && buses.length > 0 && <div className="space-y-2">{buses.map((bus) => <article key={bus._id || bus.busNumber} className="rounded-2xl border border-white/90 bg-white/90 p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-[#34405d]">{bus.busNumber || "Bus"}</p><p className="mt-1 text-xs text-[#7b859c]">{bus.direction || "Route service"} · {busStatusLabel(bus.status)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${bus.status === "active" ? "bg-[#e4f8f0] text-[#18846f]" : bus.status === "maintenance" ? "bg-[#fff0e8] text-[#a85b2a]" : "bg-[#eef0fa] text-[#687697]"}`}>{bus.status === "active" ? "Active" : bus.status === "maintenance" ? "Maintenance" : "Standby"}</span></div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#68738e]"><span>Seats: <strong className="text-[#34405d]">{bus.availableSeats ?? "—"}{bus.capacity != null ? ` / ${bus.capacity}` : ""}</strong></span>{bus.nextStop?.stopName || bus.nextStop ? <span>Next stop: <strong className="text-[#34405d]">{bus.nextStop.stopName || bus.nextStop}</strong></span> : null}{bus.etaMinutes != null && <span>ETA: <strong className="text-[#34405d]">{Math.round(bus.etaMinutes)} min</strong></span>}</div></article>)}</div>}
+                    {busesState === "ready" && buses.length > 0 && <div className="space-y-2">{buses.map((bus) => { const freshness = getLocationFreshness(bus.lastLocationUpdate, locationClock); return <article key={bus._id || bus.busNumber} className="rounded-2xl border border-white/90 bg-white/90 p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-[#34405d]">{bus.busNumber || "Bus"}</p><p className="mt-1 text-xs text-[#7b859c]">{bus.direction || "Route service"} · {busStatusLabel(bus.status)}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${freshness.available ? "bg-[#e4f8f0] text-[#18846f]" : "bg-slate-100 text-slate-600"}`}>{freshness.label}</span></div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#68738e]"><span>Seats: <strong className="text-[#34405d]">{bus.availableSeats ?? "—"}{bus.capacity != null ? ` / ${bus.capacity}` : ""}</strong></span>{freshness.available && (bus.nextStop?.stopName || bus.nextStop) ? <span>Next stop: <strong className="text-[#34405d]">{bus.nextStop.stopName || bus.nextStop}</strong></span> : null}{freshness.available && bus.etaMinutes != null && <span>ETA: <strong className="text-[#34405d]">{Math.round(bus.etaMinutes)} min</strong></span>}</div></article>; })}</div>}
                   </div>
-                  <p className="mt-4 text-xs leading-5 text-[#7b859c]">{dataSource === "demo" ? "All displayed routes, buses, seats, and ETAs are sample data for the local prototype." : "Bus status and seat counts are provided by the Smart Safar transit server."}</p>
+                  <p className="mt-4 text-xs leading-5 text-[#7b859c]">{dataSource === "demo" ? "Demo data is illustrative and does not describe live service." : "Bus status and seat counts are provided by the Smart Safar transit server."}</p>
                 </> : <p className="text-sm text-[#68738e]">Choose a route to view its stops and buses.</p>}
               </aside>
             </div>}
