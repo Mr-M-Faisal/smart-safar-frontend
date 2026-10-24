@@ -16,4 +16,7 @@ for (const required of ['localStorage', 'different domains', '.env.example', 'no
   assert.ok(securityGuide.includes(required), `Security guide should document ${required}`);
 }
 
+const nextConfig = fs.readFileSync(path.join(root, 'next.config.js'), 'utf8');
+assert.match(nextConfig, /source:\s*'\/build-id\.js'[\s\S]*?no-cache, no-store, must-revalidate/, 'PWA build id must not be cached by the CDN');
+
 console.log('project hygiene tests passed');
