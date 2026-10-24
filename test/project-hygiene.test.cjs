@@ -19,4 +19,7 @@ for (const required of ['localStorage', 'different domains', '.env.example', 'no
 const nextConfig = fs.readFileSync(path.join(root, 'next.config.js'), 'utf8');
 assert.match(nextConfig, /source:\s*'\/build-id\.js'[\s\S]*?no-cache, no-store, must-revalidate/, 'PWA build id must not be cached by the CDN');
 
+const mobileHome = fs.readFileSync(path.join(root, 'src', 'app', 'm', 'page.jsx'), 'utf8');
+assert.match(mobileHome, /aria-label="Open live transit map" className="relative block h-\[190px\]/, 'Mobile home map preview must stay positioned inside its card');
+
 console.log('project hygiene tests passed');

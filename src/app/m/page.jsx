@@ -41,7 +41,7 @@ export default function MobileHomePage() {
     <section>
       <PanelTitle eyebrow="Live transit" title="Faisalabad map" action={<Link className="text-xs font-bold text-transit-500" href="/m/map">Open map</Link>} />
       {routeList.length > 0 && <div className="mb-2 flex gap-2 overflow-x-auto pb-1">{routeList.slice(0, 6).map((route) => <button key={route._id} type="button" aria-pressed={String(route._id) === String(selectedMapRouteId)} onClick={() => setSelectedMapRouteId(String(route._id))} className={`min-h-9 shrink-0 rounded-full px-3 text-[10px] font-bold ${String(route._id) === String(selectedMapRouteId) ? "bg-transit-500 text-white" : "bg-white text-slate-600"}`}>{route.routeName}</button>)}</div>}
-      <Link href="/m/map" aria-label="Open live transit map" className="block h-[190px] overflow-hidden rounded-[1.35rem] border border-white/80 bg-[#e9edf7] shadow-[0_12px_34px_rgba(62,76,125,.08)]"><HomeRouteMap selectedRouteId={selectedMapRouteId} /></Link>
+      <Link href="/m/map" aria-label="Open live transit map" className="relative block h-[190px] overflow-hidden rounded-[1.35rem] border border-white/80 bg-[#e9edf7] shadow-[0_12px_34px_rgba(62,76,125,.08)]"><HomeRouteMap selectedRouteId={selectedMapRouteId} /></Link>
     </section>
     {routes.hasCache && <p className="text-center text-[10px] text-slate-500">Saved transit data · reconnect to refresh locations.</p>}
   </div>;
