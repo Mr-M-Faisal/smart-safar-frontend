@@ -3,7 +3,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const ignoreFiles = [path.join(root, '.gitignore'), path.resolve(root, '..', 'backend', '.gitignore')];
+
+const backendIgnore = path.resolve(root, '..', 'backend', '.gitignore');
+// CI checks out the frontend repository on its own, so the sibling backend folder is optional.
+const ignoreFiles = [path.join(root, '.gitignore'), ...(fs.existsSync(backendIgnore) ? [backendIgnore] : [])];
+
+
+
 for (const filename of ignoreFiles) {
   const contents = fs.readFileSync(filename, 'utf8');
   for (const entry of ['node_modules/', '.env*', '!.env.example']) {
