@@ -36,7 +36,7 @@ export default function SettingsScreen({ admin = false }) {
   }
   function switchToWeb() {
     document.cookie = `ss-view=web; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
-    window.location.assign(admin ? "/admin" : pathname.startsWith("/m/admin") ? "/admin" : "/");
+    window.location.assign(admin || pathname.startsWith("/m/admin") ? "/admin" : auth.role === "driver" ? "/driver" : "/");
   }
   async function clearCache() {
     try {
@@ -50,7 +50,7 @@ export default function SettingsScreen({ admin = false }) {
   }
   async function signOut() {
     await revokeAndClearSession(auth.role);
-    router.replace(admin ? "/m/login" : "/m/login");
+    router.replace("/m/login");
   }
   return <div className="app-screen space-y-4">
     <section className="app-card p-4"><p className="app-eyebrow">Profile</p><div className="mt-3 flex items-center gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#e9edff] text-sm font-bold text-[#536bb7]">{(auth.user?.name || auth.role || "S").split(/\s+/).slice(0,2).map((part)=>part[0]).join("").toUpperCase()}</span><div className="min-w-0"><h2 className="truncate text-sm font-bold text-[#293553]">{auth.user?.name || "Smart Safar user"}</h2><p className="truncate text-xs text-[#77829a]">{auth.user?.email || "Guest account"}</p></div></div><div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#edf0f6] pt-3 text-[10px] text-[#77829a]"><p>Role <strong className="block text-[#34405d]">{auth.role || "Guest"}</strong></p><p>Phone <strong className="block text-[#34405d]">{auth.user?.phone || "Not provided"}</strong></p></div><p className="mt-2 text-[10px] text-[#8992a8]">Profile edits and password changes are not available in the current API.</p></section>
