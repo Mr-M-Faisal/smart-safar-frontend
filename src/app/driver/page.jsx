@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { subscribeDriverBookings } from "@/lib/realtime";
 import usePolling from "@/lib/usePolling";
@@ -10,6 +10,7 @@ import ProfileMenu from "@/components/layout/ProfileMenu";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import useDriverTracking from "@/features/driver/useDriverTracking";
 import BottomSheet from "@/components/app/BottomSheet";
+import DriverSeatMap from "@/components/driver/DriverSeatMap";
 
 
 
@@ -60,8 +61,14 @@ export function DriverHomePage({ mobile = false }) {
   const [seatBusy, setSeatBusy] = useState(false);
   const [seatError, setSeatError] = useState(null);
   const [seatState, setSeatState] = useState({ seats: [], occupied: 0, capacity: 0 });
+  const [seatNotice, setSeatNotice] = useState("");
+  const [highlightedSeat, setHighlightedSeat] = useState(null);
+  const [undoSeatAction, setUndoSeatAction] = useState(null);
   const [lastShiftEndedAt, setLastShiftEndedAt] = useState(null);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const [mobileSeatMapOpen, setMobileSeatMapOpen] = useState(false);
+  const undoTimer = useRef(null);
+  const highlightTimer = useRef(null);
   const activeShift = profile?.activeShift;
   const authState = pageState === "ready" ? "authenticated" : ["signed-out", "expired", "denied"].includes(pageState) ? "unauthenticated" : "loading";
 
@@ -150,23 +157,87 @@ export function DriverHomePage({ mobile = false }) {
   }
 
   const loadDriverSeats = useCallback(async () => {
-    if (!token || !activeShift) return;
-    try { setSeatState(await apiRequest("/buses/assigned/seats", { token })); setSeatError(null); }
-    catch (error) { setSeatError(error); }
+    if (!token || !activeShift) return null;
+    try { const latest = await apiRequest("/buses/assigned/seats", { token }); setSeatState(latest); setSeatError(null); return latest; }
+    catch (error) { setSeatError({ message: seatErrorMessage(error), code: error?.code || null }); return null; }
   }, [token, activeShift]);
   usePolling(loadDriverSeats, 30000, { enabled: Boolean(token && activeShift && pageState === "ready") });
 
-  async function seatAction(seatNumber, action) {
-    if (!token || seatBusy) return;
+  function seatErrorMessage(error) {
+    const messages = {
+      SHIFT_NOT_OPEN: "Your shift has ended. Open an active shift to change seats.",
+      SEAT_STATE_CONFLICT: "This seat changed just now. The seat map has been refreshed.",
+      NO_SEATS_AVAILABLE: "No seats are available for a walk-in.",
+      SEAT_NOT_FOUND: "That seat was not found. The seat map has been refreshed.",
+    };
+    return messages[error?.code] || error?.message || "Could not update that seat.";
+  }
+
+  async function seatAction(seatNumbers, action, { recordUndo = true } = {}) {
+    if (!token || seatBusy) return [];
+    setSeatError(null);
+    setSeatNotice("");
     setSeatBusy(true);
     try {
-      await apiRequest(action === "walk-in" ? "/buses/assigned/seats/walk-in" : `/buses/assigned/seats/${encodeURIComponent(seatNumber)}`, { method: action === "walk-in" ? "POST" : "PATCH", token, ...(action === "walk-in" ? {} : { body: JSON.stringify({ action }) }) });
-      await loadDriverSeats();
-    } catch (error) { setPageMessage(`${error.message || "Could not update that seat."}${error.code ? ` (${error.code})` : ""}`); }
+      if (action === "walk-in") {
+        const result = await apiRequest("/buses/assigned/seats/walk-in", { method: "POST", token });
+        const assignedNumber = result?.seat?.seatNumber;
+        await loadDriverSeats();
+        if (assignedNumber != null) {
+          setSeatNotice(`Walk-in assigned to seat ${assignedNumber}.`);
+          setHighlightedSeat(assignedNumber);
+          window.clearTimeout(highlightTimer.current);
+          highlightTimer.current = window.setTimeout(() => setHighlightedSeat(null), 2500);
+        }
+        return [];
+      }
+
+      const numbers = [...new Set(seatNumbers || [])];
+      const previousStatuses = new Map(seatState.seats.map((seat) => [Number(seat.seatNumber), seat.status]));
+      const nextStatus = { occupy: "occupied", board: "occupied", release: "available", no_show: "available" }[action];
+      const delta = action === "occupy" || action === "board" ? 1 : action === "release" ? -1 : 0;
+      const changedCount = numbers.filter((number) => seatState.seats.some((seat) => Number(seat.seatNumber) === number && seat.status !== nextStatus)).length;
+      setSeatState((current) => {
+        const nextSeats = current.seats.map((seat) => numbers.includes(Number(seat.seatNumber)) ? { ...seat, status: nextStatus } : seat);
+        return { ...current, occupied: Math.max(0, Number(current.occupied || 0) + delta * changedCount), seats: nextSeats };
+      });
+      const results = await Promise.allSettled(numbers.map((seatNumber) => apiRequest(`/buses/assigned/seats/${encodeURIComponent(seatNumber)}`, { method: "PATCH", token, body: JSON.stringify({ action }) })));
+      const failed = numbers.filter((_, index) => results[index].status === "rejected");
+      const succeeded = numbers.filter((_, index) => results[index].status === "fulfilled");
+      const latest = await loadDriverSeats();
+      if (!latest) {
+        setSeatState((current) => {
+          const nextSeats = current.seats.map((seat) => failed.includes(Number(seat.seatNumber)) && previousStatuses.has(Number(seat.seatNumber)) ? { ...seat, status: previousStatuses.get(Number(seat.seatNumber)) } : seat);
+          return { ...current, occupied: nextSeats.filter((seat) => seat.status === "occupied").length, seats: nextSeats };
+        });
+      }
+      const inverse = { occupy: "release", release: "occupy" }[action];
+      if (recordUndo && succeeded.length && inverse) {
+        window.clearTimeout(undoTimer.current);
+        setUndoSeatAction({ seatNumbers: succeeded, action: inverse, label: "last change" });
+        undoTimer.current = window.setTimeout(() => setUndoSeatAction(null), 5000);
+      }
+      if (failed.length) {
+        const firstFailure = results[numbers.findIndex((number) => failed.includes(number))];
+        const cause = firstFailure?.reason;
+        const failureSeatNumber = failed[0];
+        const failureText = `Seat ${failureSeatNumber}: ${seatErrorMessage(cause)}`;
+        setSeatError({ message: `${succeeded.length} updated, ${failed.length} failed: ${failureText}`, code: cause?.code || null });
+      } else if (succeeded.length) {
+        setSeatNotice(`${succeeded.length} seat${succeeded.length === 1 ? "" : "s"} updated.`);
+      }
+      return failed;
+    } catch (error) {
+      const message = seatErrorMessage(error);
+      setSeatError({ message, code: error?.code || null });
+      return seatNumbers || [];
+    }
     finally {
       setSeatBusy(false);
     }
   }
+
+  useEffect(() => () => { window.clearTimeout(undoTimer.current); window.clearTimeout(highlightTimer.current); }, []);
 
   function signOut() {
     void revokeAndClearSession("driver");
@@ -214,7 +285,7 @@ export function DriverHomePage({ mobile = false }) {
       });
 
     const cleanups = subscribeDriverBookings(token, {
-    driverSeatStateUpdate: (update) => { if (mounted) setSeatState(update); },
+    driverSeatStateUpdate: (update) => { if (mounted) setSeatState((current) => ({ ...update, seats: (update.seats || []).map((seat) => { const previous = current.seats.find((item) => String(item.seatNumber) === String(seat.seatNumber)); return seat.status === "reserved" && previous?.status === "reserved" ? { ...seat, passengerName: previous.passengerName, shareLocation: previous.shareLocation } : seat; }) })); },
     passengerLocationUpdate: (update) => {
       if (!mounted || !update?.bookingId) return;
       setPassengerLocations((current) => {
@@ -254,7 +325,10 @@ export function DriverHomePage({ mobile = false }) {
       <section className="app-card p-5"><p className="app-eyebrow">Your shift</p><h2 className="mt-2 text-xl font-bold text-[#293553]">{activeShift ? "You’re on shift" : "Ready to drive?"}</h2><p className="app-muted mt-1">{activeShift ? `Started ${timeLabel(activeShift.startedAt)}` : "Start your assigned route when you’re ready."}</p>{activeShift && <p className="mt-4 font-mono text-3xl font-bold text-[#405ba7]"><ShiftTimer startedAt={activeShift.startedAt}/></p>}<button type="button" disabled={working || (!activeShift && !hasBusAssignment)} onClick={() => { if (activeShift && !window.confirm("End your current shift?")) return; void handleShiftAction(activeShift ? "end" : "start"); }} className={`mt-5 min-h-14 w-full rounded-2xl text-sm font-bold text-white shadow-lg disabled:opacity-50 ${activeShift ? "bg-[#b95750]" : "bg-[#536bb7]"}`}>{working ? "Updating shift…" : activeShift ? "End shift" : hasBusAssignment ? "Start shift" : "No bus assigned"}</button></section>
       {pageMessage && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{pageMessage}</p>}
       <section className="app-card p-4"><div className="flex items-center justify-between"><div><p className="app-eyebrow">Assigned service</p><h3 className="mt-1 text-base font-bold text-[#34405d]">{assignedBusName || "No bus assigned"}</h3><p className="mt-1 text-xs text-[#77829a]">{route?.routeName || "Route not assigned"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${activeShift ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{activeShift ? "Active" : "Idle"}</span></div><div className="mt-3 flex items-center justify-between border-t border-[#edf0f6] pt-3 text-xs"><span className="text-[#77829a]">GPS status</span><strong className={tracking.status === "Good" ? "text-emerald-700" : tracking.status === "Permission denied" ? "text-rose-700" : "text-amber-700"}>{tracking.status}</strong></div>{nextStop && <p className="mt-2 text-xs text-[#77829a]">Next stop · <strong className="text-[#34405d]">{nextStop}</strong></p>}<button onClick={() => setMobileDetailsOpen(true)} className="mt-3 min-h-11 w-full rounded-xl bg-[#f2f4fb] text-xs font-semibold text-[#536bb7]">View shift details</button></section>
-      {activeShift && <section className="app-card p-4"><div className="flex items-center justify-between"><h3 className="text-sm font-bold text-[#34405d]">Seat status</h3><button onClick={() => void loadDriverSeats()} className="min-h-10 px-3 text-xs font-semibold text-[#536bb7]">Refresh</button></div><p className="mt-1 text-xs text-[#77829a]">{seatState.occupied || 0} of {seatState.capacity || bus?.capacity || 0} seats occupied</p><button type="button" disabled={seatBusy} onClick={() => void seatAction(null,"walk-in")} className="app-secondary mt-3 w-full">＋ Add walk-in passenger</button></section>}
+      {activeShift && <section className="app-card p-4"><div className="flex items-center justify-between gap-3"><div className="min-w-0 flex-1"><h3 className="text-sm font-bold text-[#34405d]">Live seats</h3><p className="mt-1 truncate text-xs text-[#77829a]">{seatState.occupied || 0} / {seatState.capacity || bus?.capacity || 0} occupied · {(seatState.seats || []).filter((seat) => seat.status === "reserved").length} reserved</p><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e9edf6]"><span className="block h-full rounded-full bg-[#536bb7] transition-[width]" style={{ width: `${Math.min(100, 100 * (seatState.occupied || 0) / Math.max(1, seatState.capacity || bus?.capacity || 1))}%` }}/></div></div><button type="button" disabled={seatBusy} onClick={() => void seatAction(null, "walk-in")} className="app-secondary min-h-11 shrink-0">＋ Walk-in</button></div>{seatError && <p role="alert" className="mt-2 text-[10px] text-rose-700">{seatError.message} <button onClick={() => void loadDriverSeats()} className="font-bold underline">Retry</button></p>}<button type="button" onClick={() => setMobileSeatMapOpen(true)} className="mt-3 min-h-11 w-full rounded-xl bg-[#f2f4fb] text-xs font-semibold text-[#536bb7]">Open seat map →</button></section>}
+      <BottomSheet open={mobileSeatMapOpen} title="Live seat map" fullHeight onClose={() => { setMobileSeatMapOpen(false); setUndoSeatAction(null); setSeatNotice(""); void loadDriverSeats(); }}>
+        <DriverSeatMap seats={seatState.seats} occupied={seatState.occupied || 0} capacity={seatState.capacity || bus?.capacity || 0} busy={seatBusy} error={seatError} notice={seatNotice} highlightedSeat={highlightedSeat} undoLabel={undoSeatAction?.label || ""} onAction={seatAction} onWalkIn={() => void seatAction(null, "walk-in")} onRetry={() => void loadDriverSeats()} onUndo={() => { if (!undoSeatAction) return; const undo = undoSeatAction; setUndoSeatAction(null); void seatAction(undo.seatNumbers, undo.action, { recordUndo: false }); }}/>
+      </BottomSheet>
       <BottomSheet open={mobileDetailsOpen} title="Shift details" onClose={() => setMobileDetailsOpen(false)}><div className="space-y-3 text-sm text-[#596681]"><p><strong>Bus:</strong> {assignedBusName || "Unassigned"}</p><p><strong>Route:</strong> {route?.routeName || "Not assigned"}</p><p><strong>GPS:</strong> {tracking.status}{tracking.lastSentSeconds != null ? ` · updated ${tracking.lastSentSeconds}s ago` : ""}</p><p><strong>Seats occupied:</strong> {seatState.occupied || 0}/{seatState.capacity || bus?.capacity || 0}</p><Link href="/m/map" className="app-primary w-full">Open live map</Link>{activeShift && <button onClick={() => setLocationRefresh((value)=>value+1)} className="app-secondary w-full">Refresh shared pickup locations</button>}{locationsState === "error" && <p role="alert" className="text-xs text-rose-700">{locationsMessage}</p>}{passengerLocations.slice(0,5).map((item)=><p key={item.bookingId} className="rounded-xl bg-[#f6f7fb] p-3 text-xs">{item.passenger?.name || "Passenger"} · pickup shared for this trip</p>)}</div></BottomSheet>
     </div>;
   }
@@ -280,7 +354,7 @@ export function DriverHomePage({ mobile = false }) {
               {hasBusAssignment && <div className="mt-6 grid gap-3 sm:grid-cols-2"><InfoCard label="Route" value={route?.routeName || "Not available"}/><InfoCard label="Direction" value={activeShift?.bus?.direction || bus?.direction || "Ready to start"}/><InfoCard label="Available seats" value={bus?.availableSeats != null ? `${bus.availableSeats}${bus.capacity != null ? ` / ${bus.capacity}` : ""}` : "—"}/><InfoCard label="Bus status" value={bus?.status || activeShift?.bus?.status || "—"}/></div>}
               {activeShift && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-r from-white to-[#f0f3ff] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Shift timer</p><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-medium text-[#74809a]">Started {timeLabel(activeShift.startedAt)}</p><p className="mt-1 font-mono text-2xl font-bold tracking-tight text-[#405ba7]"><ShiftTimer startedAt={activeShift.startedAt} /></p></div><span className="rounded-full bg-[#e0f7ef] px-2.5 py-1 text-[10px] font-semibold capitalize text-[#167b6e]">{activeShift.startDirection || "outbound"} journey · running</span></div><div className="mt-4 border-t border-[#e4e9f5] pt-3"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-3 py-1.5 text-[10px] font-bold ${tracking.status === "Good" ? "bg-[#e0f7ef] text-[#167b6e]" : tracking.status === "Weak" ? "bg-amber-50 text-amber-800" : tracking.status === "Permission denied" ? "bg-rose-50 text-rose-700" : tracking.status === "Offline" ? "bg-slate-100 text-slate-700" : "bg-[#eef1fc] text-[#536bb7]"}`}>GPS · {tracking.status}</span><span className="text-[11px] text-[#74809a]">{tracking.lastSentSeconds == null ? "Waiting for first position" : `Last sent ${tracking.lastSentSeconds} s ago`}{tracking.lastAccuracy != null ? ` · ±${Math.round(tracking.lastAccuracy)} m` : ""}</span></div><p className="mt-2 text-[11px] leading-5 text-[#74809a]">Keep Smart Safar open for the most reliable location updates. Browsers may pause GPS when the app is in the background or the screen is off.</p>{tracking.status === "Permission denied" && <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800"><strong>Allow location access to share your bus position.</strong><p className="mt-1">Open your browser’s site settings, change Location to Allow, return to this page, and restart your shift.</p></div>}{tracking.errorMessage && tracking.status !== "Permission denied" && tracking.status !== "Offline" && <p role="status" className="mt-2 text-[11px] leading-5 text-[#9a6258]">{tracking.errorMessage}</p>}</div></div>}
               {!activeShift && lastShiftEndedAt && <div className="mt-5 rounded-2xl border border-[#dfe6f8] bg-[#f7f8fc] p-4"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#7181ad]">Last shift ended</p><p className="mt-1 text-sm font-semibold text-[#34405d]">{timeLabel(lastShiftEndedAt)}</p></div>}
-              {activeShift && <section className="mt-5 rounded-2xl border border-[#dfe6f8] bg-gradient-to-br from-[#f5f7ff] to-white p-4 sm:p-5">{seatError && <div role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">Seat map could not load{seatError.code ? ` (${seatError.code})` : ""}: {seatError.message} <button type="button" onClick={() => loadDriverSeats()} className="ml-2 font-bold underline">Retry</button></div>}<div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#7181ad]">Live seat map</p><p className="mt-1 text-xl font-bold text-[#293553]">{seatState.occupied || 0} / {seatState.capacity || bus?.capacity || 0} occupied</p></div><button type="button" disabled={seatBusy} onClick={() => seatAction(null,"walk-in")} className="min-h-12 rounded-xl bg-gradient-to-r from-[#263a70] to-[#536bb7] px-5 text-sm font-bold text-white shadow-md disabled:opacity-50">+ Walk-in</button></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">{(seatState.seats || []).map(seat => <article key={seat.seatNumber} className={`rounded-xl border p-2 text-center text-xs ${seat.status === "available" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : seat.status === "reserved" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-900"}`}><strong>{seat.seatNumber}</strong><span className="mt-1 block text-[9px] capitalize">{seat.status}</span>{seat.passengerName && <span className="block truncate text-[9px]">{seat.passengerName}{seat.shareLocation ? " · 📍" : ""}</span>}{seat.status === "reserved" ? <div className="mt-2 flex justify-center gap-1"><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"board")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">Mark boarded</button><button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,"no_show")} className="rounded bg-white px-2 py-1 text-[9px] font-semibold">No-show</button></div> : <button type="button" disabled={seatBusy} onClick={() => seatAction(seat.seatNumber,seat.status === "occupied" ? "release" : "occupy")} className="mt-2 rounded bg-white px-2 py-1 text-[9px] font-semibold">{seat.status === "occupied" ? "Passenger got off" : "Mark occupied"}</button>}</article>)}</div><p className="mt-2 text-[10px] text-[#8992a8]">Available · Reserved · Occupied. All seat totals are calculated from the seat map.</p></section>}
+              {activeShift && <div className="mt-5"><DriverSeatMap seats={seatState.seats} occupied={seatState.occupied || 0} capacity={seatState.capacity || bus?.capacity || 0} busy={seatBusy} error={seatError} notice={seatNotice} highlightedSeat={highlightedSeat} undoLabel={undoSeatAction?.label || ""} onAction={seatAction} onWalkIn={() => void seatAction(null, "walk-in")} onRetry={() => void loadDriverSeats()} onUndo={() => { if (!undoSeatAction) return; const undo = undoSeatAction; setUndoSeatAction(null); void seatAction(undo.seatNumbers, undo.action, { recordUndo: false }); }}/></div>}
             </section>
 
             <section className="driver-glass rounded-[1.75rem] border border-white/70 p-5 shadow-[0_18px_48px_rgba(35,49,87,.13)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_56px_rgba(35,49,87,.19)] sm:p-7">

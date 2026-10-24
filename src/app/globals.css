@@ -373,6 +373,8 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 @media (max-width: 1023px) { .m-app-stage:has(.ss-splash.is-visible) .ss-bottom-tabs, .m-app-stage:has(.ss-onboarding) .ss-bottom-tabs { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ss-tab-indicator,.ss-tab-icon,.ss-tab-link,.ss-install-button { animation: none !important; transition: none !important; } }
 .app-tab { display: flex; min-width: 0; min-height: 52px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 14px; color: #7b859c; font-size: 10px; font-weight: 650; text-decoration: none; }
+.driver-seat-actions { animation: driver-seat-actions-in 120ms ease-out both; }
+@keyframes driver-seat-actions-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .app-tab.active { background: #eef1fc; color: #40599f; }
 .app-tab span { line-height: 1; }
 .app-eyebrow, .ss-eyebrow { color: #536bb7; font-size: 10px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; }
@@ -436,6 +438,7 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 @keyframes ss-splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ss-splash-fallback-hide { to { opacity: 0; visibility: hidden; pointer-events: none; } }
 @media (prefers-reduced-motion: reduce) {
+  .driver-seat-actions { animation: none !important; }
   .ss-splash, .ss-splash * { animation-iteration-count: 1 !important; }
   .ss-splash-brand, .ss-splash-mark svg path { animation-duration: 150ms !important; }
   .ss-splash { animation-duration: 3s !important; }
