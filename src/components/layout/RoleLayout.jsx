@@ -12,6 +12,7 @@ import DesktopRefreshButton from "@/components/app/DesktopRefreshButton";
 import AppIcon from "@/components/app/icons";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { homeForRole } from "@/lib/auth/roleHome";
+import { revokeAndClearSession } from "@/lib/session";
 
 export default function RoleLayout({ role, title, links = [], children }) {
   const pathname = usePathname();
@@ -25,6 +26,10 @@ export default function RoleLayout({ role, title, links = [], children }) {
   const [pageMotion, setPageMotion] = useState(false);
   const previousLocation = useRef(null);
   const locationKey = `${pathname}?${searchParams.toString()}`;
+  function signOut() {
+    void revokeAndClearSession(roleKey);
+    router.replace(pathname.startsWith("/m/") ? "/m/login" : "/login");
+  }
   useEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = locationKey;
@@ -78,14 +83,14 @@ export default function RoleLayout({ role, title, links = [], children }) {
           <span className="mt-4 block border-t border-white/15 pt-3 text-[9px] font-bold uppercase tracking-[.18em] text-white/45">Smart Safar · Faisalabad</span>
         </div>}
       </aside>
-      <header className="fixed inset-x-0 top-0 z-[1400] flex min-h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur lg:hidden"><Link href={homeForRole(roleKey)} className="flex items-center gap-2"><BrandMark size="sm"/><span className="text-sm font-bold text-[#293553]">Smart Safar <small className="block text-[9px] font-medium text-[#77829a]">{role}</small></span></Link><div className="flex items-center gap-1"><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div></header>
+      <header className="fixed inset-x-0 top-0 z-[1400] flex min-h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur lg:hidden"><Link href={homeForRole(roleKey)} className="flex items-center gap-2"><BrandMark size="sm"/><span className="text-sm font-bold text-[#293553]">Smart Safar <small className="block text-[9px] font-medium text-[#77829a]">{role}</small></span></Link><div className="flex items-center gap-1"><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1" onSignOut={signOut}/>}</div></header>
       <main className="workspace-theme min-w-0 px-4 pb-24 pt-20 sm:px-8 sm:pb-28 sm:pt-24 lg:p-10">
         <header className="mb-8 flex items-center justify-between gap-4">
           <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-transit-700">{role} workspace</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{pageTitle}</h1>
           </div>
-          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact simple={isAdmin} homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: isAdmin ? "/admin?tab=settings" : "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div>
+          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact simple={isAdmin} homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: isAdmin ? "/admin?tab=settings" : "/account/settings" }]} switchAccountHref="/login?switch=1" onSignOut={signOut}/>}</div>
         </header>
         <div className={pageMotion ? "ss-desktop-page-in" : ""}>{children}</div>
       </main>
