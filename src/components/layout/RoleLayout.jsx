@@ -28,7 +28,7 @@ export default function RoleLayout({ role, title, links = [], children }) {
   const locationKey = `${pathname}?${searchParams.toString()}`;
   function signOut() {
     void revokeAndClearSession(roleKey);
-    router.replace(pathname.startsWith("/m/") ? "/m/login" : "/login");
+    router.replace("/login");
   }
   useEffect(() => {
     const previous = previousLocation.current;
@@ -94,7 +94,7 @@ export default function RoleLayout({ role, title, links = [], children }) {
         </header>
         <div className={pageMotion ? "ss-desktop-page-in" : ""}>{children}</div>
       </main>
-      <BottomTabBar label={`${role} navigation`} items={(isDriver ? [{ label: "Shift", href: "/driver", icon: "Bus" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Account", href: "/m/account", icon: "User" }] : isAdmin ? [{ label: "Dashboard", href: "/admin", icon: "Home" }, { label: "Buses", href: "/admin?tab=buses", icon: "Bus" }, { label: "Routes", href: "/admin?tab=routes", icon: "Routes" }, { label: "Drivers", href: "/admin?tab=drivers", icon: "User" }, { label: "Stops", href: "/admin?tab=routes#stops", icon: "Map" }] : [{ label: "Home", href: "/", icon: "Home" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Routes", href: "/routes", icon: "Routes" }, { label: "Book", href: "/passenger", icon: "Ticket" }])} className="ss-role-tabs" />
+      <BottomTabBar label={`${role} navigation`} items={(isDriver ? [{ label: "Shift", href: "/driver", icon: "Bus" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Account", href: "/account/settings", icon: "User" }] : isAdmin ? [{ label: "Dashboard", href: "/admin", icon: "Home" }, { label: "Buses", href: "/admin?tab=buses", icon: "Bus" }, { label: "Routes", href: "/admin?tab=routes", icon: "Routes" }, { label: "Drivers", href: "/admin?tab=drivers", icon: "User" }, { label: "Stops", href: "/admin?tab=routes#stops", icon: "Map" }] : [{ label: "Home", href: "/", icon: "Home" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Routes", href: "/routes", icon: "Routes" }, { label: "Book", href: "/passenger", icon: "Ticket" }])} className="ss-role-tabs" />
     </div>
   );
 }

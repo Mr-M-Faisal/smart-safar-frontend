@@ -47,28 +47,14 @@
       return serialized ? "?" + serialized : "";
     }
     function mapWebToApp(currentPath, input) {
-      var query = new URLSearchParams(input);
       var suffix = suffixFor(input);
-      if (currentPath === "/app") return "/m" + suffix;
+      if (currentPath === "/app") return "/" + suffix;
       if (currentPath === "/web") return "/" + suffix;
-      if (currentPath === "/account/profile") return "/m/account/profile" + suffix;
-      if (currentPath === "/account/settings") return "/m/account" + suffix;
       if (currentPath === "/safety/track" || currentPath.indexOf("/safety/track/") === 0) return null;
-      if (currentPath === "/admin" || currentPath.indexOf("/admin/") === 0) {
-        var adminTab = { overview: "/m/admin", drivers: "/m/admin/drivers", buses: "/m/admin/buses", routes: "/m/admin/routes", stops: "/m/admin/stops", bookings: "/m/admin/bookings", reports: "/m/admin/reports", settings: "/m/admin/settings" };
-        return (adminTab[query.get("tab")] || (currentPath.indexOf("/admin/") === 0 ? "/m/admin/" + currentPath.slice(7) : "/m/admin")) + suffix;
-      }
-      if (currentPath === "/passenger" || currentPath.indexOf("/passenger/") === 0 || currentPath === "/booking-preview" || currentPath.indexOf("/booking-preview/") === 0) return (query.get("tab") === "history" ? "/m/trips" : "/m/book") + suffix;
-      var routes = [["/routes", "/m/routes"], ["/live-map", "/m/map"], ["/login", "/m/login"], ["/driver", "/m/driver"], ["/", "/m"]];
-      for (var i = 0; i < routes.length; i += 1) {
-        var from = routes[i][0];
-        if (currentPath === from || (from !== "/" && currentPath.indexOf(from + "/") === 0)) return routes[i][1] + currentPath.slice(from.length) + suffix;
-      }
-      return null;
+      return currentPath === "/m" || currentPath.indexOf("/m/") === 0 ? mapAppToWeb(currentPath, input) : null;
     }
     function mapAppToWeb(currentPath, input) {
       var query = new URLSearchParams(input);
-      if (query.get("preview") === "1") return null;
       var suffix = suffixFor(input);
       if (currentPath === "/m/account/profile") return "/account/profile" + suffix;
       if (currentPath === "/m/admin/settings") return "/account/settings" + suffix;
@@ -87,7 +73,7 @@
       return null;
     }
     if (view === "app") target = mapWebToApp(path, location.search);
-    else if (params.get("preview") !== "1") target = mapAppToWeb(path, location.search);
+    else target = mapAppToWeb(path, location.search);
     document.documentElement.classList.add("js");
     try { if (sessionStorage.getItem("ss-splash-shown")) document.documentElement.classList.add("ss-splash-skip"); } catch (_error) {}
     document.documentElement.dataset.appMode = view;

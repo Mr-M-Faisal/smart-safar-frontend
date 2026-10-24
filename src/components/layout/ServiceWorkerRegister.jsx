@@ -8,13 +8,14 @@ const CURRENT_BUILD = process.env.NEXT_PUBLIC_BUILD_ID || "development";
 
 export default function ServiceWorkerRegister() {
   const pathname = usePathname();
+  const isInstalledPwa = typeof document !== "undefined" && document.documentElement.dataset.installed === "true";
   const [waitingWorker, setWaitingWorker] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const reloadAfterUpdate = useRef(false);
-  const isAppRoute = pathname === "/m" || pathname?.startsWith("/m/");
-  const isWorkspaceRoute = isAppRoute || pathname === "/admin" || pathname?.startsWith("/admin") || pathname === "/driver" || pathname?.startsWith("/driver");
+  const isAppRoute = isInstalledPwa || pathname === "/m" || pathname?.startsWith("/m/");
+  const isWorkspaceRoute = isInstalledPwa || isAppRoute || pathname === "/admin" || pathname?.startsWith("/admin") || pathname === "/driver" || pathname?.startsWith("/driver");
 
   useEffect(() => {
     let registration;

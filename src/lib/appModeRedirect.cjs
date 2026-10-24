@@ -18,27 +18,17 @@ function safeQuery(params) {
 function mapWebToApp(pathname = "/", search = "") {
   const params = parseSearch(search);
   const path = pathname.replace(/\/+$/, "") || "/";
-  if (path === "/app") return `/m${safeQuery(params)}`;
+  // The PWA now uses the same responsive routes as the website. Keep legacy
+  // /m links working by sending them to their corresponding shared route.
+  if (path === "/app") return `/${safeQuery(params)}`;
   if (path === "/web") return `/${safeQuery(params)}`;
-  if (path === "/account/profile") return `/m/account/profile${safeQuery(params)}`;
-  if (path === "/account/settings") return `/m/account${safeQuery(params)}`;
-  if (path === "/admin" || path.startsWith("/admin/")) {
-    const tabPath = { drivers: "/m/admin/drivers", buses: "/m/admin/buses", routes: "/m/admin/routes", stops: "/m/admin/stops", bookings: "/m/admin/bookings", reports: "/m/admin/reports", settings: "/m/admin/settings" };
-    return `${tabPath[params.get("tab")] || (path.startsWith("/admin/") ? `/m/admin/${path.slice("/admin/".length)}` : "/m/admin")}${safeQuery(params)}`;
-  }
   if (path === "/safety/track" || path.startsWith("/safety/track/")) return null;
-  if (path === "/passenger" || path.startsWith("/passenger/") || path === "/booking-preview" || path.startsWith("/booking-preview/")) {
-    return params.get("tab") === "history" ? `/m/trips${safeQuery(params)}` : `/m/book${safeQuery(params)}`;
-  }
-  const mappings = [["/routes", "/m/routes"], ["/live-map", "/m/map"], ["/login", "/m/login"], ["/driver", "/m/driver"], ["/", "/m"]];
-  const found = mappings.find(([from]) => path === from || (from !== "/" && path.startsWith(`${from}/`)));
-  return found ? `${found[1]}${path.slice(found[0].length)}${safeQuery(params)}` : null;
+  return path === "/m" || path.startsWith("/m/") ? mapAppToWeb(path, search) : null;
 }
 
 function mapAppToWeb(pathname = "/", search = "") {
   const params = parseSearch(search);
   const path = pathname.replace(/\/+$/, "") || "/";
-  if (params.get("preview") === "1") return null;
   if (path === "/m/account/profile") return `/account/profile${safeQuery(params)}`;
   if (path === "/m/admin/settings") return `/account/settings${safeQuery(params)}`;
   if (path === "/m") return `/${safeQuery(params)}`;

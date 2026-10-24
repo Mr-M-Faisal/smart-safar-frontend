@@ -27,27 +27,30 @@ test('view mode honors preferences except an installed phone always opens the ap
   assert.equal(getPreferredView(undefined, environment({ width: 1024, height: 768, standalone: true })), 'web');
 });
 
-test('web-to-app route mapping preserves query parameters and safely filters returnTo', () => {
-  assert.equal(mapWebToApp('/app'), '/m');
+test('PWA shares website routes and legacy app routes map to the shared pages', () => {
+  assert.equal(mapWebToApp('/app'), '/');
   assert.equal(mapWebToApp('/web'), '/');
-  assert.equal(mapWebToApp('/account/profile'), '/m/account/profile');
-  assert.equal(mapWebToApp('/account/settings'), '/m/account');
-  assert.equal(mapWebToApp('/routes', '?q=clock&returnTo=%2Fpassenger%3Ftab%3Dhistory'), '/m/routes?q=clock&returnTo=%2Fpassenger%3Ftab%3Dhistory');
-  assert.equal(mapWebToApp('/passenger', '?tab=history'), '/m/trips?tab=history');
-  assert.equal(mapWebToApp('/passenger', '?route=abc'), '/m/book?route=abc');
-  assert.equal(mapWebToApp('/login', '?returnTo=https%3A%2F%2Fevil.example'), '/m/login');
-  assert.equal(mapWebToApp('/admin'), '/m/admin');
-  assert.equal(mapWebToApp('/admin', '?tab=drivers'), '/m/admin/drivers?tab=drivers');
+  assert.equal(mapWebToApp('/account/profile'), null);
+  assert.equal(mapWebToApp('/account/settings'), null);
+  assert.equal(mapWebToApp('/routes', '?q=clock&returnTo=%2Fpassenger%3Ftab%3Dhistory'), null);
+  assert.equal(mapWebToApp('/passenger', '?tab=history'), null);
+  assert.equal(mapWebToApp('/passenger', '?route=abc'), null);
+  assert.equal(mapWebToApp('/login', '?returnTo=https%3A%2F%2Fevil.example'), null);
+  assert.equal(mapWebToApp('/admin'), null);
+  assert.equal(mapWebToApp('/admin', '?tab=drivers'), null);
+  assert.equal(mapWebToApp('/m/map', '?source=pwa'), '/live-map?source=pwa');
+  assert.equal(mapWebToApp('/m/account', '?source=pwa'), '/account/settings?source=pwa');
+  assert.equal(mapWebToApp('/m/trips', '?tab=history'), '/passenger?tab=history');
   assert.equal(mapWebToApp('/safety/track', '?token=shared'), null);
 });
 
-test('app-to-web route mapping and preview mode are stable', () => {
+test('legacy app routes always resolve to their shared website pages', () => {
   assert.equal(mapAppToWeb('/m/account/profile'), '/account/profile');
   assert.equal(mapAppToWeb('/m/account'), '/account/settings');
   assert.equal(mapAppToWeb('/m/admin/settings'), '/account/settings');
   assert.equal(mapAppToWeb('/m/routes', '?source=pwa'), '/routes?source=pwa');
   assert.equal(mapAppToWeb('/m/trips', '?tab=history'), '/passenger?tab=history');
-  assert.equal(mapAppToWeb('/m', '?preview=1'), null);
+  assert.equal(mapAppToWeb('/m', '?preview=1'), '/?preview=1');
   assert.equal(mapAppToWeb('/m/map', '?returnTo=%2F'), '/live-map?returnTo=%2F');
   assert.equal(mapAppToWeb('/m/admin/drivers'), '/admin?tab=drivers');
   assert.equal(mapAppToWeb('/m/admin/stops'), '/admin?tab=routes');

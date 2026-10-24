@@ -45,9 +45,9 @@ test("prepaint route choices match the shared mapping", () => {
   }
 });
 
-test('prepaint recovers installed phones from a saved website preference', () => {
+test('prepaint keeps installed phones on shared website routes', () => {
   const actual = runPrepaint('https://smartsafar.test/routes?ref=home', { device: 'phone', cookie: 'web', installed: true, includeState: true });
-  assert.equal(actual.destination, '/m/routes?ref=home');
+  assert.equal(actual.destination, null);
   assert.match(actual.cookie, /ss-view=;.*Max-Age=0/);
   assert.equal(runPrepaint('https://smartsafar.test/routes?ref=home', { device: 'phone', cookie: 'web' }), null);
 });

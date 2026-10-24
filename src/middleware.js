@@ -14,7 +14,7 @@ export function middleware(request) {
   const acceptsHtml = request.headers.get("accept")?.includes("text/html");
   const navigation = method === "GET" && (request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml);
   if (navigation && method === "GET" && (pathname === "/app" || pathname === "/web")) {
-    const response = NextResponse.redirect(new URL(pathname === "/app" ? "/m" : "/", request.url), 307);
+    const response = NextResponse.redirect(new URL("/", request.url), 307);
     if (pathname === "/app") response.cookies.set("ss-view", "app", { path: "/", maxAge: 31536000, sameSite: "lax", secure: request.nextUrl.protocol === "https:" });
     else response.cookies.set("ss-view", "web", { path: "/", sameSite: "lax", secure: request.nextUrl.protocol === "https:" });
     return response;

@@ -381,10 +381,12 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 .ss-sheet-overlay.open .ss-sheet-panel { transform: translateY(0); opacity: 1; }
 .ss-sheet-overlay.closing { opacity: 0; }
 .ss-sheet-overlay.closing .ss-sheet-panel { transform: translateY(18px); opacity: .98; }
-.ss-website-tabs,.ss-role-tabs { display: none; }
+.ss-website-tabs,.ss-app-tabs,.ss-role-tabs { display: none; }
 @keyframes ss-install-pulse { 50% { box-shadow: 0 0 0 5px rgba(83,107,183,.11); } }
 @media (max-width: 359px) { .ss-install-button span { display: none; } }
 @media (max-width: 1023px) { .ss-website-tabs,.ss-role-tabs { display: grid; } }
+@media (max-width: 1023px) { html[data-app-mode="app"] .ss-website-tabs { display: none; } html[data-app-mode="app"] .ss-app-tabs { display: grid; } }
+html[data-installed="true"] .public-footer { display: none; }
 @media (max-width: 767px) { .app-tabbar { position: fixed; right: 0; bottom: 0; left: 0; grid-template-columns: repeat(var(--tab-count),minmax(0,1fr)); border-radius: 18px 18px 0 0; } }
 @media (min-width: 1024px) { .open-mobile-app-link { display: none; } }
 @media (min-width: 1024px) { .ss-open-app-pill { display: none; } }

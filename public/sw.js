@@ -6,7 +6,7 @@ const STATIC_CACHE = `smart-safar-static-${BUILD_ID}`;
 const TILE_CACHE = `smart-safar-tiles-${BUILD_ID}`;
 const MAX_TILE_ENTRIES = 400;
 const PRECACHE_URLS = [
-  '/', '/routes', '/live-map', '/m', '/m/map', '/m/routes', '/m/book', '/offline.html',
+  '/', '/routes', '/live-map', '/offline.html',
   '/manifest.webmanifest', '/prepaint.js', '/logo.svg', '/icons/smart-safar-192.png',
   '/icons/smart-safar-512.png', '/icons/smart-safar-maskable-512.png',
   '/images/faisalabad-clock-tower.jpg', '/splash/apple-splash-750x1334.png',
