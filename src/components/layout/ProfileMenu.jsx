@@ -29,7 +29,7 @@ export function ThemeBootstrap() {
   return null;
 }
 
-export default function ProfileMenu({ name, email, role, onSignOut, variant = "dark", compact = false, dashboardLinks = [], homeHref = "/", homeLabel = "Home", switchAccountHref = "/login?switch=1" }) {
+export default function ProfileMenu({ name, email, role, onSignOut, variant = "dark", compact = false, simple = false, dashboardLinks = [], homeHref = "/", homeLabel = "Home", switchAccountHref = "/login?switch=1" }) {
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState("light");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -75,17 +75,17 @@ export default function ProfileMenu({ name, email, role, onSignOut, variant = "d
           {email && <p className="mt-0.5 truncate text-xs text-[#74809a]">{email}</p>}
           <p className="mt-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#536bb7]">{role} account</p>
         </div>
-        <div className="px-3.5 py-2"><VersionStatus/></div>
+        {!simple && <><div className="px-3.5 py-2"><VersionStatus/></div>
         {dashboardLinks.length > 0 && <div className="border-b border-[#edf0f6] py-1">{dashboardLinks.map((item) => <Link key={item.href} role="menuitem" href={item.href} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">{item.label}<span aria-hidden="true" className="float-right">→</span></Link>)}</div>}
         <div className="px-3.5 pb-2 pt-3">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#8992a8]">Appearance</p>
           <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="Choose color theme">
           {["light", "dark", "system"].map((value) => <button key={value} type="button" aria-pressed={theme === value} onClick={() => chooseTheme(value)} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold capitalize transition ${theme === value ? "border-[#7185c6] bg-[#e9edff] text-[#405ba7]" : "border-[#e4e7f1] text-[#66728e] hover:bg-[#f8f9fc]"}`}>{value === "light" ? "☀ Light" : value === "dark" ? "☾ Dark" : "System"}</button>)}
           </div>
-        </div>
+        </div></>}
         <div className="border-t border-[#edf0f6] pt-1">
-          <Link role="menuitem" href={homeHref} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">{homeLabel} <span aria-hidden="true" className="float-right">⌂</span></Link>
-          <Link role="menuitem" href={switchAccountHref} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">Switch account</Link>
+          {simple ? <>{dashboardLinks.map((item) => <Link key={item.href} role="menuitem" href={item.href} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-3 text-sm font-semibold text-[#173a67] transition hover:bg-[#f4f7fc]">{item.label}<span aria-hidden="true" className="float-right text-[#8191a8]">›</span></Link>)}</> : <><Link role="menuitem" href={homeHref} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">{homeLabel} <span aria-hidden="true" className="float-right">⌂</span></Link>
+          <Link role="menuitem" href={switchAccountHref} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">Switch account</Link></>}
           <button role="menuitem" type="button" onClick={() => { setOpen(false); setConfirmSignOut(true); }} className="block min-h-10 w-full rounded-lg px-3.5 text-left text-xs font-semibold text-[#a65348] transition hover:bg-[#fff5f2]">Log out</button>
         </div>
       </div>}

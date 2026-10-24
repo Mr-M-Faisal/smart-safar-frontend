@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { clearSessionToken, revokeAndClearSession } from "@/lib/session";
-import ProfileMenu from "@/components/layout/ProfileMenu";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import usePolling from "@/lib/usePolling";
 import BottomSheet from "@/components/app/BottomSheet";
 import SettingsScreen from "@/components/app/SettingsScreen";
+import DesktopSettingsScreen from "@/components/app/DesktopSettingsScreen";
 import { useAppRefresh } from "@/components/app/AppRefreshContext";
 
 const initialData = { overview: null, buses: [], routes: [], drivers: [], shifts: [], adminBookings: [], reportItems: [], stopsByRoute: {}, alertsByRoute: {} };
@@ -344,16 +344,17 @@ export function AdminHomePage({ mobileTab = null }) {
     </div>;
   }
 
+  if (activeTab === "settings") return <DesktopSettingsScreen />;
+
   return (
     <div className="workspace-theme space-y-9 text-[#293553]" data-admin-tab={activeTab.replace("#", "")}>
-      <section className="scroll-mt-8 rounded-[1.75rem] bg-gradient-to-br from-[#26386e] via-[#354b8d] to-[#4560a8] p-6 text-white shadow-[0_18px_45px_rgba(47,66,126,.2)] sm:p-8">
-        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#a8efdf]">Faisalabad transit operations</p><h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Welcome{admin?.name ? `, ${admin.name.split(" ")[0]}` : " back"}.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">{activeTab === "overview" ? "A quick snapshot of today’s fleet and bookings." : activeTab === "drivers" ? "Create drivers and check who is on shift or idle." : activeTab === "routes" ? "Manage routes, ordered stops, bus assignments, and service alerts." : activeTab === "buses" ? "Add buses, set passenger capacity, and assign routes." : activeTab === "bookings" ? "Review passenger journeys, seats, and payment status." : activeTab === "settings" ? "Manage your account and app preferences." : "Review and resolve passenger reports."}</p></div><div className="flex items-center gap-2"><button onClick={() => setRefreshKey((key) => key + 1)} disabled={busy} className="min-h-11 rounded-xl border border-white/20 bg-white/10 px-4 text-xs font-semibold transition hover:bg-white/15 disabled:opacity-50">Refresh data</button><ProfileMenu name={admin?.name} email={admin?.email} role="Administrator" compact onSignOut={signOut} /></div></div>
+      <section hidden={activeTab === "settings"} className="scroll-mt-8 rounded-[1.75rem] bg-gradient-to-br from-[#26386e] via-[#354b8d] to-[#4560a8] p-6 text-white shadow-[0_18px_45px_rgba(47,66,126,.2)] sm:p-8">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#a8efdf]">Faisalabad transit operations</p><h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Welcome{admin?.name ? `, ${admin.name.split(" ")[0]}` : " back"}.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">{activeTab === "overview" ? "A quick snapshot of today’s fleet and bookings." : activeTab === "drivers" ? "Create drivers and check who is on shift or idle." : activeTab === "routes" ? "Manage routes, ordered stops, bus assignments, and service alerts." : activeTab === "buses" ? "Add buses, set passenger capacity, and assign routes." : activeTab === "bookings" ? "Review passenger journeys, seats, and payment status." : "Review and resolve passenger reports."}</p></div><div className="flex items-center gap-2"><button onClick={() => setRefreshKey((key) => key + 1)} disabled={busy} className="min-h-11 rounded-xl border border-white/20 bg-white/10 px-4 text-xs font-semibold transition hover:bg-white/15 disabled:opacity-50">Refresh data</button></div></div>
       </section>
 
       {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`rounded-2xl border px-4 py-3 text-sm ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
       {loadingTab === activeTab && <div role="status" className="rounded-2xl border border-[#dce2f1] bg-white px-4 py-3 text-sm text-[#68738e]">Loading {activeTab} data…</div>}
             {dataErrors.length > 0 && <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Some dashboard sections could not load: {dataErrors.map((error) => error.key).join(", ")}. Use Refresh data to try again.</div>}
-      {activeTab === "settings" && <SettingsScreen admin desktop />}
 
       <section id="summary" aria-label="Fleet summary" hidden={activeTab !== "overview"} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Active buses" value={data.overview?.buses?.active ?? 0} note="on service" color="green" />
@@ -391,7 +392,7 @@ export function AdminHomePage({ mobileTab = null }) {
     </form>
   </div>
 
-  <div className="min-w-0 rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-[#f1f8ff] p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#c8d2f1] hover:shadow-lg sm:p-6">
+  <div id="stops" className="min-w-0 scroll-mt-8 rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-[#f1f8ff] p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#c8d2f1] hover:shadow-lg sm:p-6">
     <SectionTitle eyebrow="Stop management" title="Add a route stop"/>
     <form onSubmit={createStop} className="mt-5 grid gap-3 sm:grid-cols-2">
       <SelectField label="Route" required value={stopForm.route} onChange={(event) => { const routeId = event.target.value; const nextOrder = Math.max(0, ...(data.stopsByRoute[routeId] || []).map((stop) => Number(stop.stopOrder) || 0)) + 1; setStopForm({ ...stopForm, route: routeId, stopOrder: routeId ? String(nextOrder) : "" }); }}><option value="">Choose route</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField>

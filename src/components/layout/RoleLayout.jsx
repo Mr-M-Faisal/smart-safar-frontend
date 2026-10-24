@@ -9,6 +9,7 @@ import BottomTabBar from "@/components/app/BottomTabBar";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 import NotificationBell from "@/components/app/NotificationBell";
 import DesktopRefreshButton from "@/components/app/DesktopRefreshButton";
+import AppIcon from "@/components/app/icons";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { homeForRole } from "@/lib/auth/roleHome";
 
@@ -20,6 +21,7 @@ export default function RoleLayout({ role, title, links = [], children }) {
   const isDriver = role === "Driver";
   const isAdmin = role === "Administrator";
   const roleKey = isAdmin ? "admin" : isDriver ? "driver" : "commuter";
+  const pageTitle = isAdmin && pathname === "/admin" && searchParams.get("tab") === "settings" ? "Settings" : title;
   const [pageMotion, setPageMotion] = useState(false);
   const previousLocation = useRef(null);
   const locationKey = `${pathname}?${searchParams.toString()}`;
@@ -34,7 +36,11 @@ export default function RoleLayout({ role, title, links = [], children }) {
 
   function linkIsActive(href) {
     const target = new URL(href, "https://smartsafar.invalid");
-    if (isAdmin) return pathname === target.pathname && (searchParams.get("tab") || "overview") === (target.searchParams.get("tab") || "overview");
+    if (isAdmin) {
+      const sameTab = (searchParams.get("tab") || "overview") === (target.searchParams.get("tab") || "overview");
+      const currentHash = typeof window === "undefined" ? "" : window.location.hash;
+      return pathname === target.pathname && sameTab && (target.hash ? target.hash === currentHash : !["#stops", "#alerts"].includes(currentHash));
+    }
     return pathname === (target.pathname.replace(/\/+$/, "") || "/");
   }
 
@@ -56,8 +62,9 @@ export default function RoleLayout({ role, title, links = [], children }) {
         <nav className={`relative z-10 flex gap-2 overflow-x-auto pb-1 lg:flex-col ${isDriver ? "driver-nav" : ""}`} aria-label={`${role} navigation`}>
           {links.map(({ label, href }, index) => {
             const isActive = linkIsActive(href);
-            return <Link key={href} href={href} scroll={false} onClick={isAdmin ? (event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); router.replace(href, { scroll: false }); } } : undefined} aria-current={isActive ? "page" : undefined} className={`group inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2.5 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 sm:text-sm lg:w-full ${isDriver ? `driver-nav-link ${isActive ? "is-active" : ""}` : `${isActive ? "border-[#d6def8] bg-gradient-to-r from-[#e9edff] to-[#f4f6fc] text-[#405ba7] shadow-sm" : "border-transparent text-slate-600 hover:border-[#e4e9f7] hover:bg-[#f7f8fc] hover:text-[#405ba7]"} hover:shadow-sm`}`}>
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[9px] font-bold transition ${isDriver ? "driver-nav-index" : isActive ? "bg-[#536bb7] text-white" : "bg-[#f0f2fa] text-[#7381a4] group-hover:bg-[#e9edff] group-hover:text-[#536bb7]"}`}>{String(index + 1).padStart(2, "0")}</span>
+            const icon = /dashboard|overview/i.test(label) ? "Home" : /bus/i.test(label) ? "Bus" : /route/i.test(label) ? "Routes" : /driver|profile/i.test(label) ? "User" : /stop|map/i.test(label) ? "Map" : /alert|notification/i.test(label) ? "Bell" : /report/i.test(label) ? "Report" : /setting/i.test(label) ? "Sun" : /booking|ticket/i.test(label) ? "Ticket" : "Home";
+            return <Link key={href} href={href} scroll={false} onClick={isAdmin ? (event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); router.replace(href, { scroll: false }); const hash = new URL(href, "https://smartsafar.invalid").hash; if (hash) window.setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); } } : undefined} aria-current={isActive ? "page" : undefined} className={`group inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-2.5 text-xs font-semibold transition duration-200 hover:-translate-y-0.5 sm:text-sm lg:w-full ${isDriver ? `driver-nav-link ${isActive ? "is-active" : ""}` : `${isActive ? "border-[#d6def8] bg-gradient-to-r from-[#e9edff] to-[#f4f6fc] text-[#405ba7] shadow-sm" : "border-transparent text-slate-600 hover:border-[#e4e9f7] hover:bg-[#f7f8fc] hover:text-[#405ba7]"} hover:shadow-sm`}`}>
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg transition ${isDriver ? "driver-nav-index text-[9px] font-bold" : isAdmin ? (isActive ? "bg-[#536bb7] text-white" : "bg-[#f0f2fa] text-[#7381a4] group-hover:bg-[#e9edff] group-hover:text-[#536bb7]") : "text-[9px] font-bold"}`}>{isAdmin ? <AppIcon name={icon} size={16}/> : String(index + 1).padStart(2, "0")}</span>
               {label}
               {isDriver && <span className="driver-nav-arrow ml-auto" aria-hidden="true">→</span>}
             </Link>;
@@ -76,9 +83,9 @@ export default function RoleLayout({ role, title, links = [], children }) {
         <header className="mb-8 flex items-center justify-between gap-4">
           <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-transit-700">{role} workspace</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{title}</h1>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{pageTitle}</h1>
           </div>
-          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div>
+          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact simple={isAdmin} homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: isAdmin ? "/admin?tab=settings" : "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div>
         </header>
         <div className={pageMotion ? "ss-desktop-page-in" : ""}>{children}</div>
       </main>

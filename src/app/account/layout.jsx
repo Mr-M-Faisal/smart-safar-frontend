@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import BrandMark from "@/components/layout/BrandMark";
 import InstallButton from "@/components/app/InstallButton";
 import NotificationBell from "@/components/app/NotificationBell";
@@ -12,12 +13,16 @@ import { homeForRole } from "@/lib/auth/roleHome";
 export default function AccountLayout({ children }) {
   const auth = useAuth();
   const pathname = usePathname() || "/account/profile";
+  const router = useRouter();
   const role = auth.role === "admin" ? "Administrator" : auth.role === "driver" ? "Driver" : "Passenger";
   const homeHref = homeForRole(auth.role, false);
+  useEffect(() => {
+    if (auth.role === "admin" && pathname === "/account/settings") router.replace("/admin?tab=settings");
+  }, [auth.role, pathname, router]);
   return <RequireAuth><div className="min-h-screen bg-[#f4f5fb] text-[#293553]">
     <header className="sticky top-0 z-[1400] flex min-h-16 items-center justify-between border-b border-[#dfe4f3] bg-white/95 px-4 shadow-sm backdrop-blur sm:px-8">
       <Link href={homeHref} className="flex items-center gap-2"><BrandMark size="sm"/><span className="text-sm font-bold">Smart Safar <small className="ml-1 font-medium text-[#77829a]">/ Account</small></span></Link>
-      <div className="flex items-center gap-1"><InstallButton/><NotificationBell/><ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" homeHref={homeHref} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1"/></div>
+      <div className="flex items-center gap-1"><InstallButton/><NotificationBell/><ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact={auth.role === "admin"} simple={auth.role === "admin"} homeHref={homeHref} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: auth.role === "admin" ? "/admin?tab=settings" : "/account/settings" }]} switchAccountHref="/login?switch=1"/></div>
     </header>
     <main className="mx-auto grid max-w-6xl gap-5 px-4 py-6 sm:px-8 sm:py-10 md:grid-cols-[220px_minmax(0,1fr)]">
       <nav aria-label="Account sections" className="h-fit rounded-2xl border border-[#e0e5f1] bg-white p-2 shadow-sm">
