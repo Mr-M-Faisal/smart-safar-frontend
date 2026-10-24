@@ -10,7 +10,8 @@
     "test:unit": "node test/run-unit-tests.cjs",
     "test:e2e": "playwright test",
     "lighthouse": "lhci autorun",
-    "verify": "node scripts/verify.cjs"
+    "verify": "node scripts/verify.cjs",
+    "generate:splash": "node scripts/generate-splash.cjs"
   },
   "engines": {
     "node": ">=18 <21"
@@ -28,6 +29,7 @@
     "@playwright/test": "^1.55.1",
     "autoprefixer": "10.x",
     "postcss": "8.x",
+    "sharp": "^0.35.5",
     "tailwindcss": "3.x"
   }
 }

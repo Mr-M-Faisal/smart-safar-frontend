@@ -8,7 +8,13 @@ const PRECACHE_URLS = [
   '/', '/routes', '/live-map', '/m', '/m/map', '/m/routes', '/m/book', '/offline.html',
   '/manifest.webmanifest', '/prepaint.js', '/logo.svg', '/icons/smart-safar-192.png',
   '/icons/smart-safar-512.png', '/icons/smart-safar-maskable-512.png',
-  '/images/faisalabad-clock-tower.jpg',
+  '/images/faisalabad-clock-tower.jpg', '/splash/apple-splash-750x1334.png',
+  '/splash/apple-splash-828x1792.png', '/splash/apple-splash-1170x2532.png',
+  '/splash/apple-splash-1179x2556.png', '/splash/apple-splash-1284x2778.png',
+  '/splash/apple-splash-1290x2796.png', '/splash/apple-splash-1125x2436.png',
+  '/splash/apple-splash-1242x2208.png', '/splash/apple-splash-1242x2688.png',
+  '/splash/apple-splash-1206x2622.png', '/splash/apple-splash-1320x2868.png',
+  '/splash/apple-splash-1668x2388.png', '/splash/apple-splash-2048x2732.png',
 ];
 const PRIVATE_PATH = /^\/(?:passenger|driver|admin)(?:\/|$)|^\/m\/(?:login|driver|account|trips)(?:\/|$)/;
 const NEVER_CACHE_PATH = /^\/(?:api(?:\/|$)|socket\.io(?:\/|$)|auth(?:\/|$)|bookings(?:\/|$)|admin(?:\/|$)|driver(?:\/|$)|passenger(?:\/|$))|^\/m\/(?:login|driver|account|trips)(?:\/|$)/;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { mapAppToWeb, mapWebToApp } from "@/lib/appModeRedirect";
 
 const apiOrigin = (() => {
   try { return new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").origin; }
@@ -7,6 +8,28 @@ const apiOrigin = (() => {
 const websocketOrigin = apiOrigin.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
 
 export function middleware(request) {
+  const { pathname, search } = request.nextUrl;
+  const method = request.method;
+  const acceptsHtml = request.headers.get("accept")?.includes("text/html");
+  const navigation = method === "GET" && (request.headers.get("sec-fetch-mode") === "navigate" || acceptsHtml);
+  if (navigation && !request.nextUrl.searchParams.has("_r")) {
+    const preferred = request.cookies.get("ss-view")?.value;
+    const userAgent = request.headers.get("user-agent") || "";
+    const mobileHint = request.headers.get("sec-ch-ua-mobile") === "?1" || /Android.*Mobile|iPhone|iPod|Windows Phone|Mobile Safari/i.test(userAgent);
+    const phone = mobileHint;
+    let destination = null;
+    if (preferred === "app") destination = mapWebToApp(pathname, search);
+    else if (preferred === "web") destination = mapAppToWeb(pathname, search);
+    else if (phone) destination = mapWebToApp(pathname, search);
+    else destination = mapAppToWeb(pathname, search);
+    if (destination) {
+      const target = request.nextUrl.clone();
+      const parsedTarget = new URL(destination, target.origin);
+      target.pathname = parsedTarget.pathname;
+      target.search = parsedTarget.search;
+      return NextResponse.redirect(target, 307);
+    }
+  }
   const nonce = btoa(crypto.randomUUID());
   const policy = [
     "default-src 'self'",

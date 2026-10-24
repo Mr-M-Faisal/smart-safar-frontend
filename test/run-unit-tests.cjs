@@ -4,3 +4,5 @@ require('./auth-state.test.cjs');
 require('./data-view-state.test.cjs');
 require('./app-mode.test.cjs');
 require('./project-hygiene.test.cjs');
+require('./view-mode.test.cjs');
+require('./splash-policy.test.cjs');

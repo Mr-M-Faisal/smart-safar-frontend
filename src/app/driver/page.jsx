@@ -43,7 +43,7 @@ function InfoCard({ label, value }) {
   return <div className="rounded-2xl border border-white bg-white/85 p-4 shadow-[0_8px_24px_rgba(53,67,112,.05)]"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#8992a8]">{label}</p><p className="mt-2 break-words text-sm font-semibold text-[#34405d]">{value || "—"}</p></div>;
 }
 
-export default function DriverHomePage() {
+export function DriverHomePage() {
   const auth = useAuth();
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -294,3 +294,5 @@ export default function DriverHomePage() {
     </main>
   );
 }
+
+export default DriverHomePage;

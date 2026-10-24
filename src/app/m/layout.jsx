@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import AppViewport from "@/components/app/AppViewport";
 
-export default function MobileAppLayout() {
-  redirect("/");
+export default function MobileAppLayout({ children }) {
+  return <AppViewport>{children}</AppViewport>;
 }

@@ -1,5 +1,7 @@
-import AppPlaceholder from "@/components/app/AppPlaceholder";
+"use client";
+
+import { DriverHomePage } from "@/app/driver/page";
 
 export default function MobileDriverPage() {
-  return <AppPlaceholder title="Driver workspace" description="Driver shift and vehicle tools will be built in the driver-app phase." />;
+  return <div className="app-screen app-driver-screen"><DriverHomePage /></div>;
 }

@@ -18,3 +18,6 @@ assert.equal(isInstalledApp(environment({ window: { matchMedia: () => ({ matches
 assert.equal(isInstalledApp(environment({ window: { matchMedia: () => ({ matches: false }), location: { search: '?source=pwa' } } })), true, 'PWA launch query is app mode');
 
 console.log('app-mode tests passed');
+
+const viewMode = require('../src/lib/viewMode.cjs');
+assert.equal(viewMode.isPhoneViewport({ window: { matchMedia: () => ({ matches: true }) } }), true);

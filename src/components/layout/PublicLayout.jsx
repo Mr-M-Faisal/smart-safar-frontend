@@ -61,6 +61,9 @@ export default function PublicLayout({ children }) {
             </button>
           </div>
         </div>
+        <div className="border-t border-[#d9def0] bg-white/55 px-[var(--layout-gutter)] py-1.5 lg:hidden">
+          <div className="mx-auto flex max-w-[1440px] justify-end sm:px-8"><Link href="/m" onClick={(event) => { document.cookie = `ss-view=app; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; }} className="inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-[11px] font-bold text-[#465a9c] transition hover:bg-white"><span aria-hidden="true">⌂</span> Open mobile app</Link></div>
+        </div>
         {menuOpen && <nav id="public-mobile-menu" aria-label="Mobile navigation" className="border-t border-[#d9def0] bg-[#eef0fa] px-[var(--layout-gutter)] py-2 text-[#34405d] shadow-lg lg:hidden">
           <div className="mx-auto grid max-w-[1440px] gap-1 sm:px-8">
             {links.map(([label, href]) => {

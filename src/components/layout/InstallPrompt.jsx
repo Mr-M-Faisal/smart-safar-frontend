@@ -13,7 +13,7 @@ function isIosSafari() {
 }
 
 function isSmallScreen() {
-  return window.matchMedia("(max-width: 767px)").matches;
+  return window.matchMedia("(max-width: 1023px)").matches;
 }
 
 export default function InstallPrompt({ placement = "website" }) {
@@ -70,9 +70,12 @@ export default function InstallPrompt({ placement = "website" }) {
   }
 
   if (typeof window === "undefined") return null;
+  if (placement === "app" && pathname !== "/m") return null;
+  if (placement === "website" && pathname?.startsWith("/m")) return null;
   if (dismissed || !promptMode || !isSmallScreen()) return null;
 
-  return <aside aria-label="Install Smart Safar" className="fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[1300] mx-auto max-w-md rounded-2xl border border-[#dce2f1] bg-white p-4 text-[#293553] shadow-[0_16px_42px_rgba(35,49,87,.2)] sm:inset-x-5">
+  const bottomPosition = placement === "app" ? "bottom-[calc(env(safe-area-inset-bottom)+5rem)]" : "bottom-[max(1rem,env(safe-area-inset-bottom))]";
+  return <aside aria-label="Install Smart Safar" className={`fixed inset-x-3 ${bottomPosition} z-[1300] mx-auto max-w-md rounded-2xl border border-[#dce2f1] bg-white p-4 text-[#293553] shadow-[0_16px_42px_rgba(35,49,87,.2)] sm:inset-x-5`}>
     <div className="flex items-start gap-3">
       <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#e9edff] text-lg text-[#536bb7]">↗</span>
       <div className="min-w-0 flex-1">
