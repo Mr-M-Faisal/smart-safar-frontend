@@ -8,3 +8,8 @@ require('./view-mode.test.cjs');
 require('./splash-policy.test.cjs');
 require('./role-home.test.cjs');
 require('./settings.test.cjs');
+require('./install-mode.test.cjs');
+require('./seat-map-logic.test.cjs');
+require('./notifications.test.cjs');
+require('./pull-refresh-logic.test.cjs');
+require('./prepaint-parity.test.cjs');

@@ -67,6 +67,23 @@ async function handleNavigation(request, event, url) {
   }
 }
 
+async function handleAppNavigation(request, url) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cacheKey = canonicalNavigationRequest(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(new Request(request, { signal: controller.signal }));
+    if (response?.status === 200 && !request.headers.has('Authorization')) await cache.put(cacheKey, response.clone());
+    return response;
+  } catch (_error) {
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+    const offline = await cache.match('/offline.html');
+    return offline || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+  } finally { clearTimeout(timeout); }
+}
+
 async function trimTileCache() {
   const cache = await caches.open(TILE_CACHE);
   const keys = await cache.keys();
@@ -79,14 +96,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin && url.hostname !== 'tile.openstreetmap.org') return;
 
-  if (request.mode === 'navigate' && PRIVATE_PATH.test(url.pathname)) {
+  if (request.mode === 'navigate' && PRIVATE_PATH.test(url.pathname) && !url.pathname.startsWith('/m/')) {
     event.respondWith(fetch(request).catch(() => protectedOfflineResponse()));
     return;
   }
-  if (request.headers.has('Authorization') || NEVER_CACHE_PATH.test(url.pathname)) return;
+  if (request.headers.has('Authorization') || (NEVER_CACHE_PATH.test(url.pathname) && request.mode !== 'navigate')) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(handleNavigation(request, event, url));
+    if (url.pathname === '/' || url.pathname === '/m' || url.pathname.startsWith('/m/')) event.respondWith(handleAppNavigation(request, url));
+    else event.respondWith(handleNavigation(request, event, url));
     return;
   }
 

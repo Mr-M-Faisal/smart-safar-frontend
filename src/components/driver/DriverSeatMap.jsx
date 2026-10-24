@@ -2,8 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import BottomSheet from "@/components/app/BottomSheet";
-
-function seatNumberValue(seat) { return Number.parseInt(seat?.seatNumber, 10) || 0; }
+import { allowedActions, buildSeatRows, seatNumberValue } from "./seatMapLogic.cjs";
 
 const SeatTile = memo(function SeatTile({ seat, selected, highlighted, busy, onToggle, onReservedDetails }) {
   const status = seat?.status || "available";
@@ -24,7 +23,7 @@ export default function DriverSeatMap({ seats = [], capacity = 0, occupied = 0, 
   const [reservedSeat, setReservedSeat] = useState(null);
   const byNumber = useMemo(() => new Map(sortedSeats.map((seat) => [seatNumberValue(seat), seat])), [sortedSeats]);
   const seatCount = Math.max(0, Number(capacity) || sortedSeats.length);
-  const rows = Math.ceil(seatCount / 4);
+  const rows = useMemo(() => buildSeatRows(seatCount), [seatCount]);
   const counts = useMemo(() => sortedSeats.reduce((result, seat) => { result[seat.status] = (result[seat.status] || 0) + 1; return result; }, { available: 0, reserved: 0, occupied: 0 }), [sortedSeats]);
 
   useEffect(() => {
@@ -42,8 +41,7 @@ export default function DriverSeatMap({ seats = [], capacity = 0, occupied = 0, 
   const selectedSeats = [...selected].map((number) => byNumber.get(number)).filter(Boolean);
   const selectedStatuses = new Set(selectedSeats.map((seat) => seat.status));
   const homogeneous = selectedStatuses.size === 1;
-  const selectedStatus = homogeneous ? selectedSeats[0]?.status : null;
-  const actions = selectedStatus === "available" ? [["occupy", `Mark occupied (${selected.size})`]] : selectedStatus === "occupied" ? [["release", `Passenger got off (${selected.size})`]] : selectedStatus === "reserved" ? [["board", `Mark boarded (${selected.size})`], ["no_show", `No-show (${selected.size})`]] : [];
+  const actions = allowedActions(selectedSeats);
 
   const toggle = useCallback((number) => {
     if (!number) return;
@@ -66,11 +64,10 @@ export default function DriverSeatMap({ seats = [], capacity = 0, occupied = 0, 
       <div className="mb-3 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-[#77829a]"><svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="m5.6 5.6 5 5m7.8-5-5 5M12 14v6"/></svg>Front</div>
       <div className="mb-2 grid grid-cols-[44px_44px_22px_44px_44px] gap-[6px] text-center text-[9px] font-medium text-[#a0a8bb]"><span>Driver</span><span/><span/><span/><span/></div>
       <div className="flex flex-col gap-[6px]">
-        {Array.from({ length: rows }, (_, row) => <div key={row} className="col-span-5 grid grid-cols-[44px_44px_22px_44px_44px] items-center gap-[6px]">
-          {[0, 1, null, 2, 3].map((position, column) => {
-            if (position == null) return <span key="aisle" aria-hidden="true" className="h-11 border-x border-dashed border-slate-200"/>;
-            const number = row * 4 + position + 1;
-            if (number > seatCount) return <span key={`empty-${column}`} className="h-11 w-11"/>;
+        {rows.map((rowSeats, row) => <div key={row} className="col-span-5 grid grid-cols-[44px_44px_22px_44px_44px] items-center gap-[6px]">
+          {rowSeats.map((number, column) => {
+            if (column === 2) return <span key="aisle" aria-hidden="true" className="h-11 border-x border-dashed border-slate-200"/>;
+            if (number == null) return <span key={`empty-${column}`} className="h-11 w-11"/>;
             const seat = byNumber.get(number);
             const viewSeat = seat || { seatNumber: number, status: "available" };
             return <SeatTile key={number} seat={viewSeat} selected={selected.has(number)} highlighted={Number(highlightedSeat) === number} busy={busy || !seat} onToggle={toggle} onReservedDetails={setReservedSeat}/>;

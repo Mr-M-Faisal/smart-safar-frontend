@@ -6,6 +6,7 @@ import RouteAccessibility from "@/components/layout/RouteAccessibility";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { AppModeProvider } from "@/lib/AppModeProvider";
 import InstallPromptProvider from "@/lib/pwa/InstallPromptProvider";
+import DirtyFormTracker from "@/components/app/DirtyFormTracker";
 
 export const metadata = {
   title: "Smart Safar | Faisalabad Transit",
@@ -54,6 +55,7 @@ export default function RootLayout({ children }) {
         <AppModeProvider>
           <AuthProvider>
             <InstallPromptProvider>
+            <DirtyFormTracker />
             <ServiceWorkerRegister />
             <Suspense fallback={null}><RouteAccessibility /></Suspense>
             <ThemeBootstrap />

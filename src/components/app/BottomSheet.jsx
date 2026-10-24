@@ -8,6 +8,15 @@ export default function BottomSheet({ open, title, onClose, dirty = false, fullH
   const dialogRef = useRef(null);
   function close() { if (!dirty || window.confirm("Discard your unsaved changes?")) onClose(); }
   useEffect(() => {
+    if (!open || !dirty) return undefined;
+    window.__ssDirtyForms = (window.__ssDirtyForms || 0) + 1;
+    window.dispatchEvent(new CustomEvent("smart-safar:dirty-forms-changed", { detail: { count: window.__ssDirtyForms } }));
+    return () => {
+      window.__ssDirtyForms = Math.max(0, (window.__ssDirtyForms || 0) - 1);
+      window.dispatchEvent(new CustomEvent("smart-safar:dirty-forms-changed", { detail: { count: window.__ssDirtyForms } }));
+    };
+  }, [open, dirty]);
+  useEffect(() => {
     if (!open) return undefined;
     dialogRef.current?.querySelector("button, input, select, textarea, a[href]")?.focus();
     const onKeyDown = (event) => {

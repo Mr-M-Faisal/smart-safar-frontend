@@ -1,58 +1,73 @@
 "use client";
 
-import { createContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { installInstructions, resolveInstallMode } from "./installMode.cjs";
 
 export const InstallPromptContext = createContext(null);
 
 export default function InstallPromptProvider({ children }) {
   const [promptEvent, setPromptEvent] = useState(null);
   const [isInstalled, setInstalled] = useState(false);
-  const [isIOS, setIOS] = useState(false);
-  const [isAndroid, setAndroid] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [mode, setMode] = useState("desktop-manual");
   const [attentionPulse, setAttentionPulse] = useState(false);
 
+  const syncMode = useCallback((eventAvailable = Boolean(window.__smartSafarInstallPrompt), relatedInstalled = false) => {
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || Boolean(navigator.standalone);
+    const nextMode = resolveInstallMode({ userAgent: navigator.userAgent, platform: navigator.platform, maxTouchPoints: navigator.maxTouchPoints, standalone, hasPromptEvent: eventAvailable, relatedAppInstalled: relatedInstalled });
+    setInstalled(nextMode === "installed");
+    setMode(nextMode);
+  }, []);
+
   useEffect(() => {
-    const standalone = () => window.matchMedia("(display-mode: standalone)").matches || Boolean(navigator.standalone);
-    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && /Safari/i.test(navigator.userAgent) && !/(CriOS|FxiOS|EdgiOS|OPiOS)/i.test(navigator.userAgent);
-    const android = /Android/i.test(navigator.userAgent);
-    setInstalled(standalone());
-    setIOS(ios);
-    setAndroid(android);
-    try { setDismissed(sessionStorage.getItem("ss-install-dismissed") === "1"); } catch (_error) {}
+    let active = true;
+    syncMode();
+    const updateRelatedApps = async () => {
+      try {
+        const apps = await navigator.getInstalledRelatedApps?.();
+        if (active) syncMode(Boolean(window.__smartSafarInstallPrompt), Boolean(apps?.length));
+      } catch {}
+    };
+    void updateRelatedApps();
     try {
       if (!sessionStorage.getItem("ss-install-pulse-shown")) {
         sessionStorage.setItem("ss-install-pulse-shown", "1");
         setAttentionPulse(true);
         window.setTimeout(() => setAttentionPulse(false), 3000);
       }
-    } catch (_error) { setAttentionPulse(true); window.setTimeout(() => setAttentionPulse(false), 3000); }
-    const beforeInstall = (event) => { event.preventDefault(); window.__smartSafarInstallPrompt = event; setPromptEvent(event); };
-    const syncEarlyPrompt = () => { if (window.__smartSafarInstallPrompt) setPromptEvent(window.__smartSafarInstallPrompt); };
-    const installed = () => { window.__smartSafarInstallPrompt = null; setInstalled(true); setPromptEvent(null); };
+    } catch {}
+    const beforeInstall = (event) => { event.preventDefault(); window.__smartSafarInstallPrompt = event; setPromptEvent(event); syncMode(true); };
+    const syncEarlyPrompt = () => { const event = window.__smartSafarInstallPrompt; setPromptEvent(event || null); syncMode(Boolean(event)); };
+    const installed = () => { window.__smartSafarInstallPrompt = null; setPromptEvent(null); setInstalled(true); setMode("installed"); };
     const displayMode = window.matchMedia("(display-mode: standalone)");
-    const onDisplayMode = () => setInstalled(standalone());
+    const onDisplayMode = () => syncMode();
     window.addEventListener("beforeinstallprompt", beforeInstall);
     window.addEventListener("smart-safar:install-prompt-ready", syncEarlyPrompt);
     window.addEventListener("appinstalled", installed);
-    syncEarlyPrompt();
     displayMode.addEventListener?.("change", onDisplayMode);
     return () => {
+      active = false;
       window.removeEventListener("beforeinstallprompt", beforeInstall);
       window.removeEventListener("smart-safar:install-prompt-ready", syncEarlyPrompt);
       window.removeEventListener("appinstalled", installed);
       displayMode.removeEventListener?.("change", onDisplayMode);
     };
-  }, []);
+  }, [syncMode]);
 
-  async function install() {
-    if (!promptEvent) return false;
-    await promptEvent.prompt();
-    const choice = await promptEvent.userChoice;
+  const install = useCallback(async () => {
+    const event = promptEvent || window.__smartSafarInstallPrompt;
+    if (!event) return false;
+    await event.prompt();
+    const choice = await event.userChoice;
     setPromptEvent(null);
-    if (choice?.outcome === "accepted") setInstalled(true);
+    window.__smartSafarInstallPrompt = null;
+    if (choice?.outcome === "accepted") { setInstalled(true); setMode("installed"); }
+    else syncMode(false);
     return choice?.outcome === "accepted";
-  }
-  const value = useMemo(() => ({ canInstall: Boolean(promptEvent), isInstalled, isIOS, isAndroid, install, dismissed, attentionPulse, dismiss: () => { setDismissed(true); try { sessionStorage.setItem("ss-install-dismissed", "1"); } catch (_error) {} } }), [promptEvent, isInstalled, isIOS, isAndroid, dismissed, attentionPulse]);
+  }, [promptEvent, syncMode]);
+
+  const value = useMemo(() => ({
+    mode, isInstalled, canInstall: mode === "prompt", attentionPulse, install,
+    instructions: installInstructions({ mode, userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent }),
+  }), [mode, isInstalled, attentionPulse, install]);
   return <InstallPromptContext.Provider value={value}>{children}</InstallPromptContext.Provider>;
 }

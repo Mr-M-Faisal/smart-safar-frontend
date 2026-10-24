@@ -5,12 +5,14 @@ import { useMemo, useState } from "react";
 import { useRoutes } from "@/lib/data/hooks";
 import AppIcon from "@/components/app/icons";
 import formatCacheAge from "@/lib/data/formatCacheAge";
+import { useAppRefresh } from "@/components/app/AppRefreshContext";
 
 export default function MobileRoutesPage() {
   const resource = useRoutes();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const routes = Array.isArray(resource.data) ? resource.data : [];
+  useAppRefresh(resource.refresh);
   const filtered = useMemo(() => routes.filter((route) => {
     const text = `${route.routeName || ""} ${route.startPoint || ""} ${route.endPoint || ""} ${(route.stops || []).map((stop) => stop.stopName || stop).join(" ")}`.toLowerCase();
     return text.includes(search.trim().toLowerCase()) && (filter === "All" || (route.buses || []).some((bus) => bus.status === "active"));

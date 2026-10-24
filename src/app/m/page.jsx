@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRoutes } from "@/lib/data/hooks";
 import AppIcon from "@/components/app/icons";
+import { useAppRefresh } from "@/components/app/AppRefreshContext";
 
 const HomeRouteMap = dynamic(() => import("@/components/map/HomeRouteMap"), { ssr: false, loading: () => <div className="h-full animate-pulse rounded-2xl bg-[#e6e9f4]" /> });
 
@@ -12,6 +13,7 @@ const shortcuts = [["Live map", "/m/map", "Map"], ["Routes", "/m/routes", "Route
 export default function MobileHomePage() {
   const routes = useRoutes();
   const routeList = Array.isArray(routes.data) ? routes.data : [];
+  useAppRefresh(routes.refresh);
   return <div className="app-home">
     <section className="app-home-greeting"><div><p className="app-eyebrow">Faisalabad · transit</p><h2 className="mt-2 text-[1.65rem] font-bold tracking-[-.04em] text-[#293553]">Where to?</h2><p className="app-muted mt-1">Plan your next trip across the city.</p></div><Link href="/m/account" className="app-icon-button app-card" aria-label="Account"><AppIcon name="User"/></Link></section>
     <Link href="/m/routes" className="mt-5 flex min-h-[54px] items-center gap-3 rounded-2xl border border-[#e1e6f2] bg-white px-4 text-sm text-[#8992a8] shadow-sm"><AppIcon name="Search"/><span className="flex-1">Search routes, stops, or areas</span><span className="text-[#536bb7]">→</span></Link>

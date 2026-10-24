@@ -364,17 +364,29 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 .ss-tab-link:active { transform: scale(.94); }.ss-tab-link.is-active { color: #465d9f; }.ss-tab-icon { position: relative; display: grid; min-height: 24px; place-items: center; transition: transform 220ms cubic-bezier(.4,0,.2,1); }.ss-tab-link.is-active .ss-tab-icon { transform: scale(1.08); }.ss-tab-label { max-width: 100%; overflow: hidden; font-size: 10px; font-weight: 650; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }.ss-tab-badge { position: absolute; top: -3px; right: -7px; display: grid; min-width: 14px; height: 14px; place-items: center; border-radius: 99px; background: #df625b; padding: 0 3px; color: white; font-size: 8px; font-weight: 800; }
 .ss-install-button { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #dfe4f3; border-radius: 14px; background: #fff; padding: 0 9px; color: #536bb7; font-size: 11px; font-weight: 750; }
 .ss-install-button.is-attention { animation: ss-install-pulse 1s ease-in-out 3; }
+.open-mobile-app-link { display: inline-flex; }
 .ss-website-tabs,.ss-role-tabs { display: none; }
 @keyframes ss-install-pulse { 50% { box-shadow: 0 0 0 5px rgba(83,107,183,.11); } }
 @media (max-width: 359px) { .ss-install-button span { display: none; } }
 @media (max-width: 1023px) { .ss-website-tabs,.ss-role-tabs { display: grid; } }
 @media (max-width: 767px) { .app-tabbar { position: fixed; right: 0; bottom: 0; left: 0; grid-template-columns: repeat(var(--tab-count),minmax(0,1fr)); border-radius: 18px 18px 0 0; } }
-@media (min-width: 1024px) { .ss-install-button { display: none; } }
+@media (min-width: 1024px) { .ss-install-button.website-install-button, .open-mobile-app-link { display: none; } }
 @media (max-width: 1023px) { .m-app-stage:has(.ss-splash.is-visible) .ss-bottom-tabs, .m-app-stage:has(.ss-onboarding) .ss-bottom-tabs { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ss-tab-indicator,.ss-tab-icon,.ss-tab-link,.ss-install-button { animation: none !important; transition: none !important; } }
 .app-tab { display: flex; min-width: 0; min-height: 52px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 14px; color: #7b859c; font-size: 10px; font-weight: 650; text-decoration: none; }
 .driver-seat-actions { animation: driver-seat-actions-in 120ms ease-out both; }
 @keyframes driver-seat-actions-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.app-scroll { overscroll-behavior-y: contain; }
+.ss-pull-indicator { position: absolute; left: 50%; top: 8px; z-index: 20; display: flex; align-items: center; gap: 8px; border: 1px solid #dfe4f3; border-radius: 999px; background: #fff; padding: 7px 12px; color: #536bb7; font-size: 10px; font-weight: 700; box-shadow: 0 8px 22px rgba(35,49,87,.12); }
+.ss-pull-spinner { display: inline-block; font-size: 16px; line-height: 1; }
+.ss-pull-spinner.is-spinning { animation: ss-pull-spin .8s linear infinite; }
+@keyframes ss-pull-spin { to { transform: rotate(360deg); } }
+.ss-page-in-tab { animation: ss-page-tab-in 200ms ease-out both; }
+.ss-page-in-right { animation: ss-page-right-in 200ms ease-out both; }
+.ss-page-in-left { animation: ss-page-left-in 200ms ease-out both; }
+@keyframes ss-page-tab-in { from { opacity: .65; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ss-page-right-in { from { opacity: .65; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes ss-page-left-in { from { opacity: .65; transform: translateX(-18px); } to { opacity: 1; transform: translateX(0); } }
 .app-tab.active { background: #eef1fc; color: #40599f; }
 .app-tab span { line-height: 1; }
 .app-eyebrow, .ss-eyebrow { color: #536bb7; font-size: 10px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; }
@@ -403,16 +415,21 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 .app-stepper span.active { border-color: #20bba5; color: #40599f; font-weight: 800; }
 .ss-splash { position: fixed; z-index: 2200; inset: 0; display: grid; align-content: center; justify-items: center; gap: 1.15rem; overflow: hidden; background: linear-gradient(135deg,#111d3d,#1b2b54 60%,#2a4077); color: #fff; opacity: 1; pointer-events: auto; animation: ss-splash-fallback-hide 3s ease forwards; }
 .ss-splash-skip .ss-splash { display: none; }
-.ss-splash.is-hidden { visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 300ms ease, transform 300ms ease; transform: scale(1.015); animation: none; }
+.ss-splash.is-hidden { visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 300ms ease, transform 300ms ease; transform: scale(1.04); animation: none; }
 .ss-splash-brand { display: flex; align-items: center; gap: .85rem; animation: ss-splash-in 500ms ease both; }
 .ss-splash-brand strong { display: block; font-size: 1.6rem; letter-spacing: -.04em; }
 .ss-splash-brand small { display: block; margin-top: .25rem; color: #a8efdf; font-size: .65rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
-.ss-splash-mark svg path:first-child { stroke-dasharray: 120; stroke-dashoffset: 120; animation: ss-pin-draw 900ms ease 100ms forwards; }
-.ss-splash-mark svg path:nth-child(2) { stroke-dasharray: 32; stroke-dashoffset: 32; animation: ss-pin-draw 600ms ease 700ms forwards; }
-.ss-splash-route { position: relative; width: 150px; height: 20px; border-top: 2px dotted rgba(168,239,223,.65); }
-.ss-splash-bus { position: absolute; top: -14px; left: 0; color: #60ead0; animation: ss-bus-travel 1.4s ease-in-out infinite alternate; }
+.ss-splash-mark { animation: ss-pin-bounce 320ms cubic-bezier(.2,.8,.25,1) 1.05s both; }
+.ss-splash-mark svg path:first-child { stroke-dasharray: 120; stroke-dashoffset: 120; animation: ss-pin-draw 600ms ease 100ms forwards; }
+.ss-splash-mark svg path:nth-child(2) { stroke-dasharray: 32; stroke-dashoffset: 32; animation: ss-pin-draw 420ms ease 650ms forwards; }
+.ss-splash-wordmark { animation: ss-splash-in 380ms ease 900ms both; }
+.ss-splash-tagline { animation: ss-splash-in 380ms ease 1.02s both; }
+.ss-splash-route { position: relative; width: min(220px,58vw); height: 28px; overflow: hidden; }
+.ss-splash-route::before { position: absolute; top: 9px; left: 0; width: 100%; border-top: 2px dotted rgba(168,239,223,.65); content: ""; clip-path: inset(0 100% 0 0); animation: ss-route-draw 900ms ease 950ms forwards; }
+.ss-splash-bus { position: absolute; top: 1px; left: 0; animation: ss-bus-travel 1.05s ease-in-out 1.2s 1 both; }
+@supports (offset-path: path("M 0 0 L 1 1")) { .ss-splash-bus { offset-path: path("M 0 0 L 136 0"); offset-rotate: 0deg; animation: ss-bus-path 1.05s ease-in-out 1.2s 1 both; } }
 .ss-splash-progress { position: absolute; right: 18%; bottom: max(28px,env(safe-area-inset-bottom)); left: 18%; height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.18); }
-.ss-splash-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: #60ead0; animation: ss-progress 2.8s ease forwards; }
+.ss-splash-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: #60ead0; animation: ss-progress 2.1s ease forwards; }
 .ss-onboarding { position: fixed; z-index: 2100; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1.5rem max(1.5rem,env(safe-area-inset-bottom)); background: #f4f5fb; color: #293553; text-align: center; touch-action: pan-y; }
 .ss-onboarding-skip { position: absolute; top: max(1.3rem,env(safe-area-inset-top)); right: 1.25rem; min-width: 48px; min-height: 44px; border: 0; background: transparent; color: #68738e; font-size: 13px; font-weight: 700; }
 .ss-onboarding-art { position: relative; display: grid; width: 210px; height: 210px; margin-bottom: 2rem; place-items: center; border-radius: 50%; background: radial-gradient(circle,#e1e8ff 0,#edf8f6 65%,transparent 66%); color: #536bb7; }
@@ -433,14 +450,23 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 }
 @media (max-width: 767px) { .admin-screen-notice { display: block; position: sticky; top: 0; z-index: 1500; background: #eef1fc; padding: .7rem 1rem; color: #465a9c; font-size: 11px; font-weight: 700; text-align: center; } }
 @keyframes ss-pin-draw { to { stroke-dashoffset: 0; } }
+@keyframes ss-pin-bounce { 0% { transform: translateY(-8px); } 70% { transform: translateY(2px); } 100% { transform: translateY(0); } }
+@keyframes ss-route-draw { to { clip-path: inset(0 0 0 0); } }
 @keyframes ss-bus-travel { from { transform: translateX(0); } to { transform: translateX(136px); } }
+@keyframes ss-bus-path { from { offset-distance: 0%; } to { offset-distance: 100%; } }
 @keyframes ss-progress { to { width: 100%; } }
 @keyframes ss-splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ss-splash-fallback-hide { to { opacity: 0; visibility: hidden; pointer-events: none; } }
 @media (prefers-reduced-motion: reduce) {
   .driver-seat-actions { animation: none !important; }
+  .ss-page-in-tab,.ss-page-in-right,.ss-page-in-left,.ss-pull-spinner.is-spinning { animation: none !important; }
   .ss-splash, .ss-splash * { animation-iteration-count: 1 !important; }
-  .ss-splash-brand, .ss-splash-mark svg path { animation-duration: 150ms !important; }
+  .ss-splash-brand, .ss-splash-wordmark, .ss-splash-tagline { animation-duration: 150ms !important; animation-delay: 0ms !important; }
+  .ss-splash-mark { animation: none !important; }
+  .ss-splash-mark svg path { stroke-dashoffset: 0 !important; animation: none !important; }
+  .ss-splash-route::before { clip-path: none; animation: none !important; }
+  .ss-splash-bus { animation: none !important; offset-distance: 100%; }
+  .ss-splash-progress span { width: 100%; animation: none !important; }
   .ss-splash { animation-duration: 3s !important; }
   .ss-onboarding-dots span, .app-scroll { scroll-behavior: auto; transition-duration: 1ms; }
 }

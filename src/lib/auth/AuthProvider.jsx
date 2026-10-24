@@ -117,6 +117,10 @@ export function AuthProvider({ children }) {
 
 export function useAuth() { return useContext(AuthContext); }
 
+export function updateAuthUser(profile, accessToken = null) {
+  updateAuthSnapshot((current) => current.status === "authenticated" && profile?.role === current.role ? { ...current, ...(accessToken ? { token: accessToken } : {}), user: profile } : current);
+}
+
 export function RequireAuth({ children, roles }) {
   const auth = useAuth();
   const router = useRouter();

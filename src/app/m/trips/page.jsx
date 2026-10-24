@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMyBookings, useMySafetySessions, useRoutes } from "@/lib/data/hooks";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { apiRequest } from "@/lib/api";
 import PaymentStatus from "@/components/booking/PaymentStatus";
+import { useAppRefresh } from "@/components/app/AppRefreshContext";
 
 const tabs = ["Upcoming", "Past", "Safety", "Report"];
 
@@ -24,6 +25,8 @@ export default function MobileTripsPage() {
   const sessions = Array.isArray(safetyResource.data) ? safetyResource.data : safetyResource.data?.sessions || [];
   const buses = useMemo(() => (Array.isArray(routeResource.data) ? routeResource.data : []).flatMap((route) => (route.buses || []).map((bus) => ({ ...bus, routeName: route.routeName }))), [routeResource.data]);
   const visibleBookings = bookings.filter((booking) => tab === "Upcoming" ? ["confirmed", "pending"].includes(booking.status) : ["completed", "cancelled"].includes(booking.status));
+  const refreshTrips = useCallback(() => Promise.all([bookingResource.refresh(), safetyResource.refresh(), routeResource.refresh()]), [bookingResource.refresh, safetyResource.refresh, routeResource.refresh]);
+  useAppRefresh(refreshTrips);
 
   async function action(label, path, options = {}) {
     setWorking(label); setError(""); setNotice("");

@@ -11,6 +11,8 @@ import ConnectivityNotice from "@/components/layout/ConnectivityNotice";
 import InstallButton from "@/components/app/InstallButton";
 import BottomTabBar from "@/components/app/BottomTabBar";
 import { homeForRole } from "@/lib/auth/roleHome";
+import useInstallPrompt from "@/lib/pwa/useInstallPrompt";
+import { mapWebToApp } from "@/lib/appModeRedirect";
 
 const links = [
   ["Home", "/"],
@@ -28,10 +30,12 @@ export default function PublicLayout({ children }) {
   const router = useRouter();
   const signInHref = typeof window === "undefined" ? "/login" : `/login?returnTo=${encodeURIComponent(`${pathname}${window.location.search}${window.location.hash}`)}`;
   const auth = useAuth();
+  const installState = useInstallPrompt();
   const signedIn = auth.status === "authenticated";
   const profile = signedIn ? auth.user : null;
   const roleLabel = auth.role === "admin" ? "Administrator" : auth.role === "driver" ? "Driver" : "Passenger";
   const logoHref = signedIn ? homeForRole(auth.role, false) : "/";
+  const mobileAppHref = typeof window === "undefined" ? null : mapWebToApp(pathname || "/", window.location.search);
   return (
     <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-night text-white">
       <header className="public-header sticky top-0 z-[1400] border-b border-[#d9def0] bg-[#eef0fa]/95 text-[#25304f] shadow-[0_5px_24px_rgba(40,52,92,.08)] backdrop-blur-xl">
@@ -51,6 +55,7 @@ export default function PublicLayout({ children }) {
             })}
           </nav>
           <div className="flex shrink-0 items-center gap-2">
+            {mobileAppHref && !installState.isInstalled && <Link href={mobileAppHref} onClick={(event) => { event.preventDefault(); document.cookie = `ss-view=app; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; window.location.assign(mobileAppHref); }} className="open-mobile-app-link min-h-10 items-center rounded-full border border-[#dfe4f3] bg-white px-3 text-[10px] font-bold text-[#536bb7]">Open mobile app</Link>}
             <InstallButton />
             {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={auth.role === "commuter" ? [{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }, { label: "Report an issue", href: "/passenger#report" }] : [{ label: "Open dashboard", href: homeForRole(auth.role, false) }]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
           </div>

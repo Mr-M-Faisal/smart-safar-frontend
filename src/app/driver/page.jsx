@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import useDriverTracking from "@/features/driver/useDriverTracking";
 import BottomSheet from "@/components/app/BottomSheet";
 import DriverSeatMap from "@/components/driver/DriverSeatMap";
+import { useAppRefresh } from "@/components/app/AppRefreshContext";
 
 
 
@@ -161,6 +162,8 @@ export function DriverHomePage({ mobile = false }) {
     try { const latest = await apiRequest("/buses/assigned/seats", { token }); setSeatState(latest); setSeatError(null); return latest; }
     catch (error) { setSeatError({ message: seatErrorMessage(error), code: error?.code || null }); return null; }
   }, [token, activeShift]);
+  const refreshDriverData = useCallback(() => token ? Promise.all([reload(token, () => true, true), loadDriverSeats()]) : Promise.resolve(), [loadDriverSeats, reload, token]);
+  useAppRefresh(refreshDriverData);
   usePolling(loadDriverSeats, 30000, { enabled: Boolean(token && activeShift && pageState === "ready") });
 
   function seatErrorMessage(error) {

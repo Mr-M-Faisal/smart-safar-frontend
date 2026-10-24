@@ -78,7 +78,7 @@ export default function MobileLoginPage() {
     <section className="app-card mx-auto max-w-md p-5">
       <p className="app-eyebrow">Passenger access</p><h2 className="mt-2 text-xl font-bold text-[#293553]">{mode === "signup" ? "Create your account" : "Welcome back"}</h2><p className="app-muted mt-1">Sign in to book seats and manage your journeys.</p>
       {error && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
-      <form className="mt-5 grid gap-3" onSubmit={submit}>
+      <form data-ss-dirty-form className="mt-5 grid gap-3" onSubmit={submit}>
         {mode === "signup" && <><label className="grid gap-1 text-xs font-semibold text-[#596681]">Full name<input autoComplete="name" required className="app-input" value={name} onChange={(event) => setName(event.target.value)} /></label><label className="grid gap-1 text-xs font-semibold text-[#596681]">Phone (optional)<input autoComplete="tel" className="app-input" value={phone} onChange={(event) => setPhone(event.target.value)} /></label></>}
         <label className="grid gap-1 text-xs font-semibold text-[#596681]">Email address<input type="email" autoComplete="email" required className="app-input" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
         <label className="grid gap-1 text-xs font-semibold text-[#596681]">Password<input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={mode === "signup" ? 8 : undefined} required className="app-input" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
