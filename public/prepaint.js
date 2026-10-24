@@ -1,5 +1,15 @@
 (function prepaintSmartSafar() {
   try {
+    window.__smartSafarInstallPrompt = window.__smartSafarInstallPrompt || null;
+    if (!window.__smartSafarInstallPromptListener) {
+      window.__smartSafarInstallPromptListener = true;
+      window.addEventListener("beforeinstallprompt", function (event) {
+        event.preventDefault();
+        window.__smartSafarInstallPrompt = event;
+        window.dispatchEvent(new Event("smart-safar:install-prompt-ready"));
+      });
+      window.addEventListener("appinstalled", function () { window.__smartSafarInstallPrompt = null; });
+    }
     var params = new URLSearchParams(location.search);
     var cookies = document.cookie.split(";").map(function (part) { return part.trim(); });
     var preference = (cookies.find(function (part) { return part.indexOf("ss-view=") === 0; }) || "").split("=")[1];
