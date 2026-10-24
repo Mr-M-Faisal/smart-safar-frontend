@@ -12,6 +12,7 @@ export default function RouteAccessibility() {
   const search = useSearchParams().toString();
   const [announcement, setAnnouncement] = useState("");
   const pendingRestore = useRef(null);
+  const lastPathname = useRef(null);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -30,10 +31,13 @@ export default function RouteAccessibility() {
   useEffect(() => {
     const heading = document.querySelector("main h1, h1");
     const title = heading?.textContent?.trim() || document.title;
-    if (heading) {
+    // Do not steal focus on first load. Only move it after an in-app route change.
+    // Tracking the pathname also avoids focusing the heading when only query state changes.
+    if (lastPathname.current !== null && lastPathname.current !== pathname && heading) {
       if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
       heading.focus({ preventScroll: true });
     }
+    lastPathname.current = pathname;
     setAnnouncement("");
     const announceTimer = window.setTimeout(() => setAnnouncement(title), 30);
     const restoreKey = pendingRestore.current;
