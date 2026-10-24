@@ -29,7 +29,7 @@ export function ThemeBootstrap() {
   return null;
 }
 
-export default function ProfileMenu({ name, email, role, onSignOut, variant = "dark", dashboardLinks = [], homeHref = "/", homeLabel = "Home", switchAccountHref = "/login?switch=1" }) {
+export default function ProfileMenu({ name, email, role, onSignOut, variant = "dark", compact = false, dashboardLinks = [], homeHref = "/", homeLabel = "Home", switchAccountHref = "/login?switch=1" }) {
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState("light");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -65,10 +65,9 @@ export default function ProfileMenu({ name, email, role, onSignOut, variant = "d
 
   return (
     <div ref={menuRef} className="relative z-[1300]">
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className={`inline-flex min-h-11 items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-left shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${light ? "border-[#dfe4f3] bg-white text-[#293553] hover:bg-[#f8f9fc] focus-visible:outline-[#536bb7]" : "border-white/30 bg-white/15 text-white backdrop-blur hover:bg-white/25 focus-visible:outline-white"}`}>
+      <button type="button" aria-label={compact ? `${name || role || "Profile"} account menu` : undefined} title={compact ? `${name || role || "Profile"} · ${role || "Account"}` : undefined} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className={`inline-flex ${compact ? "h-11 w-11 justify-center p-0" : "min-h-11 py-1 pl-1 pr-3"} items-center gap-2 rounded-full border text-left shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${light ? "border-[#dfe4f3] bg-white text-[#293553] hover:bg-[#f8f9fc] focus-visible:outline-[#536bb7]" : "border-white/30 bg-white/15 text-white backdrop-blur hover:bg-white/25 focus-visible:outline-white"}`}>
         <span className="relative grid h-9 w-9 place-items-center rounded-full bg-[#a8efdf] text-xs font-bold text-[#26386e]">{initials}{updatePending && <span aria-label="Update available" className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-[#e49353]"/>}</span>
-        <span className="hidden max-w-32 truncate text-xs font-semibold sm:block">{name || role || "Profile"}</span>
-        <span aria-hidden="true" className={`text-xs ${light ? "text-[#74809a]" : "text-white/75"}`}>⌄</span>
+        {!compact && <><span className="hidden max-w-32 truncate text-xs font-semibold sm:block">{name || role || "Profile"}</span><span aria-hidden="true" className={`text-xs ${light ? "text-[#74809a]" : "text-white/75"}`}>⌄</span></>}
       </button>
       {open && <div role="menu" className="absolute right-0 top-[calc(100%+10px)] w-[min(19rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[#dfe4f3] bg-white p-2 text-[#293553] shadow-[0_22px_65px_rgba(28,42,83,.24)]">
         <div className="rounded-xl bg-[#f4f6fc] px-3.5 py-3">

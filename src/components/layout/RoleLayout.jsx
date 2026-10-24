@@ -78,7 +78,7 @@ export default function RoleLayout({ role, title, links = [], children }) {
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-transit-700">{role} workspace</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{title}</h1>
           </div>
-          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div>
+          <div className="hidden items-center gap-2 lg:flex"><DesktopRefreshButton/><InstallButton/><NotificationBell/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" compact homeHref={homeForRole(roleKey)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }]} switchAccountHref="/login?switch=1"/>}</div>
         </header>
         <div className={pageMotion ? "ss-desktop-page-in" : ""}>{children}</div>
       </main>
