@@ -1,8 +1,17 @@
 /** @type {import('next').NextConfig} */
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+let buildMetadata = { version: require('./package.json').version, buildId: 'development', builtAt: 'development' };
+try { buildMetadata = JSON.parse(readFileSync(resolve(__dirname, 'public/version.json'), 'utf8')); } catch (_error) {}
 const nextConfig = {
   reactStrictMode: true,
   compress: true,
   poweredByHeader: false,
+  env: {
+    NEXT_PUBLIC_APP_VERSION: buildMetadata.version,
+    NEXT_PUBLIC_BUILD_ID: buildMetadata.buildId,
+    NEXT_PUBLIC_BUILT_AT: buildMetadata.builtAt,
+  },
   async headers() {
     return [
       {
@@ -32,6 +41,10 @@ const nextConfig = {
       },
       {
         source: '/manifest.webmanifest',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
+      },
+      {
+        source: '/version.json',
         headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }],
       },
     ];

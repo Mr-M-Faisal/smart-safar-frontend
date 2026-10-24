@@ -1,4 +1,5 @@
 importScripts('/build-id.js');
+importScripts('/navigation-policy.js');
 
 const BUILD_ID = self.SMART_SAFAR_BUILD_ID || 'development';
 const STATIC_CACHE = `smart-safar-static-${BUILD_ID}`;
@@ -16,8 +17,7 @@ const PRECACHE_URLS = [
   '/splash/apple-splash-1206x2622.png', '/splash/apple-splash-1320x2868.png',
   '/splash/apple-splash-1668x2388.png', '/splash/apple-splash-2048x2732.png',
 ];
-const PRIVATE_PATH = /^\/(?:passenger|driver|admin)(?:\/|$)|^\/m\/(?:login|driver|account|trips)(?:\/|$)/;
-const NEVER_CACHE_PATH = /^\/(?:api(?:\/|$)|socket\.io(?:\/|$)|auth(?:\/|$)|bookings(?:\/|$)|admin(?:\/|$)|driver(?:\/|$)|passenger(?:\/|$))|^\/m\/(?:login|driver|account|trips)(?:\/|$)/;
+const NEVER_CACHE_PATH = /^\/(?:api(?:\/|$)|socket\.io(?:\/|$)|auth(?:\/|$)|bookings(?:\/|$)|admin(?:\/|$)|driver(?:\/|$)|passenger(?:\/|$))|^\/m\/(?:login|driver|account|trips|admin|book)(?:\/|$)/;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(STATIC_CACHE)
@@ -95,8 +95,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin && url.hostname !== 'tile.openstreetmap.org') return;
+  if (url.origin === self.location.origin && ['/app', '/web', '/version.json'].includes(url.pathname)) return;
 
-  if (request.mode === 'navigate' && PRIVATE_PATH.test(url.pathname) && !url.pathname.startsWith('/m/')) {
+  // Authenticated and account-specific screens must never enter the shared
+  // navigation cache. A cached HTML response can contain another user's data.
+  if (request.mode === 'navigate' && self.SmartSafarNavigationPolicy.isPrivateNavigation(url.pathname)) {
     event.respondWith(fetch(request).catch(() => protectedOfflineResponse()));
     return;
   }

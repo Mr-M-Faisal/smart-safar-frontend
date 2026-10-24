@@ -19,6 +19,21 @@
       || (document.referrer || "").indexOf("android-app://") === 0
       || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
       || params.get("source") === "pwa";
+    var safetyTrack = location.pathname === "/safety/track" || location.pathname.indexOf("/safety/track/") === 0;
+    if (!safetyTrack && (params.get("view") === "app" || params.get("view") === "web")) {
+      var requestedView = params.get("view");
+      document.cookie = requestedView === "app"
+        ? "ss-view=app; Path=/; Max-Age=31536000; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : "")
+        : "ss-view=web; Path=/; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : "");
+      params.delete("view");
+      var cleanSearch = params.toString();
+      location.replace(location.pathname + (cleanSearch ? "?" + cleanSearch : "") + location.hash);
+      return;
+    }
+    if (installed && phone && preference === "web") {
+      preference = "";
+      document.cookie = "ss-view=; Path=/; Max-Age=0; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : "");
+    }
     var view = preference === "app" || preference === "web" ? preference : (phone ? "app" : "web");
     var path = location.pathname.replace(/\/+$/, "") || "/";
     var target = null;
@@ -34,6 +49,10 @@
     function mapWebToApp(currentPath, input) {
       var query = new URLSearchParams(input);
       var suffix = suffixFor(input);
+      if (currentPath === "/app") return "/m" + suffix;
+      if (currentPath === "/web") return "/" + suffix;
+      if (currentPath === "/account/profile") return "/m/account/profile" + suffix;
+      if (currentPath === "/account/settings") return "/m/account" + suffix;
       if (currentPath === "/safety/track" || currentPath.indexOf("/safety/track/") === 0) return null;
       if (currentPath === "/admin" || currentPath.indexOf("/admin/") === 0) {
         var adminTab = { overview: "/m/admin", drivers: "/m/admin/drivers", buses: "/m/admin/buses", routes: "/m/admin/routes", stops: "/m/admin/stops", bookings: "/m/admin/bookings", reports: "/m/admin/reports", settings: "/m/admin/settings" };
@@ -51,9 +70,12 @@
       var query = new URLSearchParams(input);
       if (query.get("preview") === "1") return null;
       var suffix = suffixFor(input);
+      if (currentPath === "/m/account/profile") return "/account/profile" + suffix;
+      if (currentPath === "/m/admin/settings") return "/account/settings" + suffix;
       if (currentPath === "/m") return "/" + suffix;
       if (currentPath === "/m/book" || currentPath.indexOf("/m/book/") === 0) return "/passenger" + suffix;
-      if (currentPath === "/m/trips" || currentPath === "/m/account") return "/passenger" + suffix;
+      if (currentPath === "/m/trips") return "/passenger" + suffix;
+      if (currentPath === "/m/account") return "/account/settings" + suffix;
       if (currentPath === "/m/admin" || currentPath.indexOf("/m/admin/") === 0) {
         var admin = { "/m/admin": "overview", "/m/admin/drivers": "drivers", "/m/admin/buses": "buses", "/m/admin/routes": "routes", "/m/admin/stops": "routes", "/m/admin/bookings": "bookings", "/m/admin/reports": "reports", "/m/admin/settings": "overview" };
         if (!Object.prototype.hasOwnProperty.call(admin, currentPath)) return null;

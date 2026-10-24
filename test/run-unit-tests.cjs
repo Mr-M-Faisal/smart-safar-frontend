@@ -13,3 +13,6 @@ require('./seat-map-logic.test.cjs');
 require('./notifications.test.cjs');
 require('./pull-refresh-logic.test.cjs');
 require('./prepaint-parity.test.cjs');
+require('./changelog-version.test.cjs');
+require('./qr-code.test.cjs');
+require('./sw-navigation-safety.test.cjs');

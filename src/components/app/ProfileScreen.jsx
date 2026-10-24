@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import BottomSheet from "@/components/app/BottomSheet";
 import { apiRequest } from "@/lib/api";
 import { useAuth, updateAuthUser } from "@/lib/auth/AuthProvider";
@@ -13,6 +13,8 @@ export default function ProfileScreen() {
   const auth = useAuth();
   useAppRefresh(auth.refreshAuth);
   const search = useSearchParams();
+  const pathname = usePathname() || "/m/account/profile";
+  const accountSettingsHref = pathname.startsWith("/m/") ? (auth.role === "admin" ? "/m/admin/settings" : "/m/account") : "/account/settings";
   const [name, setName] = useState(auth.user?.name || "");
   const [phone, setPhone] = useState(auth.user?.phone || "");
   const [busy, setBusy] = useState(false);
@@ -64,7 +66,7 @@ export default function ProfileScreen() {
   const initials = (auth.user?.name || "S").trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
   return <div className="app-screen space-y-4">
-    <Link href={auth.role === "admin" ? "/m/admin/settings" : "/m/account"} className="inline-flex min-h-10 items-center text-xs font-semibold text-[#536bb7]">← Account settings</Link>
+    <Link href={accountSettingsHref} className="inline-flex min-h-10 items-center text-xs font-semibold text-[#536bb7]">← Account settings</Link>
     <section className="app-card p-5">
       <div className="mb-5 flex items-center gap-3"><span className="grid h-14 w-14 place-items-center rounded-full bg-[#e9edff] text-lg font-bold text-[#536bb7]">{initials}</span><div><p className="text-base font-bold text-[#293553]">{auth.user?.name}</p><span className="mt-1 inline-block rounded-full bg-[#eef1fc] px-2.5 py-1 text-[10px] font-semibold text-[#536bb7]">{roleLabel}</span></div></div>
       <form onSubmit={saveProfile} className="grid gap-3">

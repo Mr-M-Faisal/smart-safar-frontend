@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-api-url.cjs && node scripts/generate-build-id.cjs",
+    "prebuild": "node scripts/check-api-url.cjs && node --test test/changelog-version.test.cjs && node scripts/generate-build-id.cjs",
     "build": "next build",
+    "build-id": "node scripts/generate-build-id.cjs",
+    "release:patch": "npm version patch --no-git-tag-version && npm run build-id",
+    "release:minor": "npm version minor --no-git-tag-version && npm run build-id",
     "start": "next start",
     "test:unit": "node test/run-unit-tests.cjs",
     "test:e2e": "playwright test",

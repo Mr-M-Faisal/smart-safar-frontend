@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import settingsStore from "@/lib/settings.js";
 import BottomSheet from "@/components/app/BottomSheet";
+import VersionStatus from "@/components/app/VersionStatus";
+import useReleaseStatus from "@/components/app/useReleaseStatus";
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -31,6 +33,8 @@ export default function ProfileMenu({ name, email, role, onSignOut, variant = "d
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState("light");
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const release = useReleaseStatus();
+  const updatePending = release.status === "update-available" || release.status === "updating";
   const menuRef = useRef(null);
   const light = variant === "light";
 
@@ -62,7 +66,7 @@ export default function ProfileMenu({ name, email, role, onSignOut, variant = "d
   return (
     <div ref={menuRef} className="relative z-[1300]">
       <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className={`inline-flex min-h-11 items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-left shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${light ? "border-[#dfe4f3] bg-white text-[#293553] hover:bg-[#f8f9fc] focus-visible:outline-[#536bb7]" : "border-white/30 bg-white/15 text-white backdrop-blur hover:bg-white/25 focus-visible:outline-white"}`}>
-        <span className="grid h-9 w-9 place-items-center rounded-full bg-[#a8efdf] text-xs font-bold text-[#26386e]">{initials}</span>
+        <span className="relative grid h-9 w-9 place-items-center rounded-full bg-[#a8efdf] text-xs font-bold text-[#26386e]">{initials}{updatePending && <span aria-label="Update available" className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-[#e49353]"/>}</span>
         <span className="hidden max-w-32 truncate text-xs font-semibold sm:block">{name || role || "Profile"}</span>
         <span aria-hidden="true" className={`text-xs ${light ? "text-[#74809a]" : "text-white/75"}`}>⌄</span>
       </button>
@@ -72,6 +76,7 @@ export default function ProfileMenu({ name, email, role, onSignOut, variant = "d
           {email && <p className="mt-0.5 truncate text-xs text-[#74809a]">{email}</p>}
           <p className="mt-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#536bb7]">{role} account</p>
         </div>
+        <div className="px-3.5 py-2"><VersionStatus/></div>
         {dashboardLinks.length > 0 && <div className="border-b border-[#edf0f6] py-1">{dashboardLinks.map((item) => <Link key={item.href} role="menuitem" href={item.href} onClick={() => setOpen(false)} className="block rounded-lg px-3.5 py-2.5 text-xs font-semibold text-[#596681] transition hover:bg-[#f4f6fc] hover:text-[#405ba7]">{item.label}<span aria-hidden="true" className="float-right">→</span></Link>)}</div>}
         <div className="px-3.5 pb-2 pt-3">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#8992a8]">Appearance</p>

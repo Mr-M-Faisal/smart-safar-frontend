@@ -2,7 +2,7 @@
 
 ## Delivery notes
 
-The frontend now serves two experiences from the same Next.js application. Phone-sized views use `/m/*`; desktop defaults to the existing website. The tablet default is the desktop website. The `ss-view=app|web` cookie stores an explicit user choice for one year (`Path=/`, `SameSite=Lax`); `Use desktop site` and `Open mobile app` update that preference. `/admin` and shared `/safety/track` links remain on the website. Desktop app previews remain available at `/m?preview=1`.
+The frontend now serves two experiences from the same Next.js application. Phone-sized views use `/m/*`; desktop defaults to the existing website. The tablet default is the desktop website. `ss-view=app` persists for one year, while `ss-view=web` is a session preference. An installed phone launch always opens the app, even if the browser previously chose the website. Use `/app` to reset the preference and open the app; reinstalling does not clear it because the preference is a browser cookie. `/web` opens the website for the current browser session. The `?view=app` and `?view=web` URL options set the same preferences. Shared `/safety/track` links are never redirected. Desktop app previews remain available at `/m?preview=1`.
 
 No backend or AWS deployment configuration was changed. Existing API, session, booking, map, and driver tracking logic is reused. The mobile screens use the existing navy, indigo, and teal palette; shared desktop page layouts were not redesigned. Browser screenshots for the install manifest are in `public/screenshots/`.
 
@@ -28,6 +28,14 @@ The app is installable from `localhost` during local development and from an HTT
 ## PWA assets
 
 `npm run generate:splash` renders the iOS startup images from `public/logo.svg` using the Sharp development dependency. The script creates current iPhone/iPad splash dimensions under `public/splash/`. The manifest starts at `/?source=pwa`, maps phone launches to the app, and includes map, route, and trip shortcuts plus narrow and wide screenshots.
+
+## Release versions
+
+The prebuild step generates a unique build id and `public/version.json`; the app compares that metadata with the running build to report available updates. Add a newest-first entry to `src/content/changelog.json` for each release. The unit suite verifies its newest version matches `package.json`.
+
+- `npm run release:patch` increments the patch version and regenerates release metadata.
+- `npm run release:minor` increments the minor version and regenerates release metadata.
+- Both release scripts avoid creating a Git tag or commit; review and commit the resulting version files normally.
 
 ## Verification
 

@@ -18,6 +18,10 @@ function safeQuery(params) {
 function mapWebToApp(pathname = "/", search = "") {
   const params = parseSearch(search);
   const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/app") return `/m${safeQuery(params)}`;
+  if (path === "/web") return `/${safeQuery(params)}`;
+  if (path === "/account/profile") return `/m/account/profile${safeQuery(params)}`;
+  if (path === "/account/settings") return `/m/account${safeQuery(params)}`;
   if (path === "/admin" || path.startsWith("/admin/")) {
     const tabPath = { drivers: "/m/admin/drivers", buses: "/m/admin/buses", routes: "/m/admin/routes", stops: "/m/admin/stops", bookings: "/m/admin/bookings", reports: "/m/admin/reports", settings: "/m/admin/settings" };
     return `${tabPath[params.get("tab")] || (path.startsWith("/admin/") ? `/m/admin/${path.slice("/admin/".length)}` : "/m/admin")}${safeQuery(params)}`;
@@ -35,9 +39,12 @@ function mapAppToWeb(pathname = "/", search = "") {
   const params = parseSearch(search);
   const path = pathname.replace(/\/+$/, "") || "/";
   if (params.get("preview") === "1") return null;
+  if (path === "/m/account/profile") return `/account/profile${safeQuery(params)}`;
+  if (path === "/m/admin/settings") return `/account/settings${safeQuery(params)}`;
   if (path === "/m") return `/${safeQuery(params)}`;
   if (path === "/m/book" || path.startsWith("/m/book/")) return `/passenger${safeQuery(params)}`;
-  if (path === "/m/trips" || path === "/m/account") return `/passenger${safeQuery(params)}`;
+  if (path === "/m/trips") return `/passenger${safeQuery(params)}`;
+  if (path === "/m/account") return `/account/settings${safeQuery(params)}`;
   if (path === "/m/admin" || path.startsWith("/m/admin/")) {
     const tabFromPath = { "/m/admin": "overview", "/m/admin/drivers": "drivers", "/m/admin/buses": "buses", "/m/admin/routes": "routes", "/m/admin/stops": "routes", "/m/admin/bookings": "bookings", "/m/admin/reports": "reports", "/m/admin/settings": "overview" };
     if (!Object.hasOwn(tabFromPath, path)) return null;

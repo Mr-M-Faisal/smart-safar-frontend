@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { AppModeProvider } from "@/lib/AppModeProvider";
 import InstallPromptProvider from "@/lib/pwa/InstallPromptProvider";
 import DirtyFormTracker from "@/components/app/DirtyFormTracker";
+import ReleaseNotesDialog from "@/components/app/ReleaseNotesDialog";
 
 export const metadata = {
   title: "Smart Safar | Faisalabad Transit",
@@ -59,6 +60,7 @@ export default function RootLayout({ children }) {
             <ServiceWorkerRegister />
             <Suspense fallback={null}><RouteAccessibility /></Suspense>
             <ThemeBootstrap />
+            <ReleaseNotesDialog />
             {children}
             </InstallPromptProvider>
           </AuthProvider>

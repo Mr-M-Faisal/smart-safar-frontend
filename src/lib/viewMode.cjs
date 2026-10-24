@@ -25,9 +25,11 @@ function isPhoneViewport(environment = {}) {
 }
 
 function getPreferredView(cookieValue, environment = {}) {
-  if (cookieValue === "app" || cookieValue === "web") return cookieValue;
   const phone = isPhoneViewport(environment);
-  if (isInstalledApp(environment)) return phone ? "app" : "web";
+  // An installed phone launch must remain recoverable even when a previous
+  // browser session saved the website preference.
+  if (isInstalledApp(environment) && phone) return "app";
+  if (cookieValue === "app" || cookieValue === "web") return cookieValue;
   return phone ? "app" : "web";
 }
 

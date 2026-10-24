@@ -365,14 +365,31 @@ html.ss-app-active, html.ss-app-active body { height: var(--ss-app-height, 100dv
 .ss-install-button { display: inline-flex; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #dfe4f3; border-radius: 14px; background: #fff; padding: 0 9px; color: #536bb7; font-size: 11px; font-weight: 750; }
 .ss-install-button.is-attention { animation: ss-install-pulse 1s ease-in-out 3; }
 .open-mobile-app-link { display: inline-flex; }
+.ss-open-app-pill { position: fixed; z-index: 1260; right: max(12px,env(safe-area-inset-right)); bottom: calc(env(safe-area-inset-bottom) + 5.25rem); display: flex; align-items: center; gap: 2px; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; background: #40599f; padding: 4px 5px 4px 14px; color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 8px 24px rgba(30,43,83,.24); }
+.ss-open-app-pill a { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; }
+.ss-open-app-pill button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 50%; background: rgba(255,255,255,.13); color: #fff; font-size: 18px; }
+.ss-release-banner { position: fixed; z-index: 2150; top: 12px; right: 16px; display: flex; max-width: min(560px,calc(100vw - 32px)); align-items: center; gap: 10px; border: 1px solid #dce2f1; border-radius: 16px; background: rgba(255,255,255,.97); padding: 8px 10px 8px 14px; color: #34405d; box-shadow: 0 12px 35px rgba(35,49,87,.18); backdrop-filter: blur(12px); }
+.ss-release-banner.is-app { top: calc(env(safe-area-inset-top) + 68px); }
+.ss-desktop-page-in { animation: ss-page-tab-in 180ms ease-out both; }
+@media (min-width: 1024px) { .ss-public-page-in { animation: ss-page-tab-in 180ms ease-out both; } }
+.ss-sheet-overlay { opacity: 0; transition: opacity 180ms ease; }
+.ss-sheet-overlay.open { opacity: 1; }
+.ss-sheet-panel { transform: translateY(18px); opacity: .98; transition: transform 180ms ease, opacity 180ms ease; }
+.ss-sheet-overlay.open .ss-sheet-panel { transform: translateY(0); opacity: 1; }
+.ss-sheet-overlay.closing { opacity: 0; }
+.ss-sheet-overlay.closing .ss-sheet-panel { transform: translateY(18px); opacity: .98; }
 .ss-website-tabs,.ss-role-tabs { display: none; }
 @keyframes ss-install-pulse { 50% { box-shadow: 0 0 0 5px rgba(83,107,183,.11); } }
 @media (max-width: 359px) { .ss-install-button span { display: none; } }
 @media (max-width: 1023px) { .ss-website-tabs,.ss-role-tabs { display: grid; } }
 @media (max-width: 767px) { .app-tabbar { position: fixed; right: 0; bottom: 0; left: 0; grid-template-columns: repeat(var(--tab-count),minmax(0,1fr)); border-radius: 18px 18px 0 0; } }
-@media (min-width: 1024px) { .ss-install-button.website-install-button, .open-mobile-app-link { display: none; } }
+@media (min-width: 1024px) { .open-mobile-app-link { display: none; } }
+@media (min-width: 1024px) { .ss-open-app-pill { display: none; } }
 @media (max-width: 1023px) { .m-app-stage:has(.ss-splash.is-visible) .ss-bottom-tabs, .m-app-stage:has(.ss-onboarding) .ss-bottom-tabs { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ss-tab-indicator,.ss-tab-icon,.ss-tab-link,.ss-install-button { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ss-sheet-overlay,.ss-sheet-panel { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ss-desktop-page-in { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ss-public-page-in { animation: none !important; } }
 .app-tab { display: flex; min-width: 0; min-height: 52px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 14px; color: #7b859c; font-size: 10px; font-weight: 650; text-decoration: none; }
 .driver-seat-actions { animation: driver-seat-actions-in 120ms ease-out both; }
 @keyframes driver-seat-actions-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { revokeAndClearSession } from "@/lib/session";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import ProfileMenu from "@/components/layout/ProfileMenu";
@@ -13,6 +14,9 @@ import BottomTabBar from "@/components/app/BottomTabBar";
 import { homeForRole } from "@/lib/auth/roleHome";
 import useInstallPrompt from "@/lib/pwa/useInstallPrompt";
 import { mapWebToApp } from "@/lib/appModeRedirect";
+import MobileAppPill from "@/components/layout/MobileAppPill";
+import VersionStatus from "@/components/app/VersionStatus";
+import DesktopRefreshButton from "@/components/app/DesktopRefreshButton";
 
 const links = [
   ["Home", "/"],
@@ -30,6 +34,16 @@ export default function PublicLayout({ children }) {
   const router = useRouter();
   const signInHref = typeof window === "undefined" ? "/login" : `/login?returnTo=${encodeURIComponent(`${pathname}${window.location.search}${window.location.hash}`)}`;
   const auth = useAuth();
+  const [pageMotion, setPageMotion] = useState(false);
+  const previousPath = useRef(null);
+  useEffect(() => {
+    const previous = previousPath.current;
+    previousPath.current = pathname;
+    if (!previous || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+    setPageMotion(true);
+    const timer = window.setTimeout(() => setPageMotion(false), 180);
+    return () => window.clearTimeout(timer);
+  }, [pathname]);
   const installState = useInstallPrompt();
   const signedIn = auth.status === "authenticated";
   const profile = signedIn ? auth.user : null;
@@ -55,14 +69,15 @@ export default function PublicLayout({ children }) {
             })}
           </nav>
           <div className="flex shrink-0 items-center gap-2">
+            <DesktopRefreshButton />
             {mobileAppHref && !installState.isInstalled && <Link href={mobileAppHref} onClick={(event) => { event.preventDefault(); document.cookie = `ss-view=app; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; window.location.assign(mobileAppHref); }} className="open-mobile-app-link min-h-10 items-center rounded-full border border-[#dfe4f3] bg-white px-3 text-[10px] font-bold text-[#536bb7]">Open mobile app</Link>}
             <InstallButton />
-            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={auth.role === "commuter" ? [{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }, { label: "Report an issue", href: "/passenger#report" }] : [{ label: "Open dashboard", href: homeForRole(auth.role, false) }]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
+            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }, ...(auth.role === "commuter" ? [{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }] : [])]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
           </div>
         </div>
       </header>
       <ConnectivityNotice />
-      <div className="flex-1 bg-[#f4f5fb] pb-20 lg:bg-transparent lg:pb-0">{children}</div>
+      <div className={`flex-1 bg-[#f4f5fb] pb-20 lg:bg-transparent lg:pb-0 ${pageMotion ? "ss-public-page-in" : ""}`}>{children}</div>
       <footer className="border-t border-white/15 bg-gradient-to-br from-[#344d91] via-[#40599f] to-[#26386e] text-white">
         <div className="mx-auto grid max-w-[1440px] gap-7 px-5 py-8 sm:grid-cols-2 sm:px-8 sm:gap-12 sm:py-12 lg:grid-cols-[1.35fr_.8fr_1fr] lg:px-12 lg:py-16">
           <div>
@@ -95,10 +110,13 @@ export default function PublicLayout({ children }) {
           <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-4 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
             <span>Smart Safar · Final Year Project prototype</span>
             <span>Service details come from live transit data. Any demo details are labeled.</span>
+            <VersionStatus compact />
           </div>
         </div>
+          <div className="border-t border-white/15 px-5 py-3 text-center text-xs text-white/75 sm:px-8 lg:px-12"><Link href="/app" className="underline decoration-white/40 underline-offset-4 hover:text-white">Get the Smart Safar app</Link></div>
       </footer>
       <BottomTabBar label="Website navigation" items={links.map(([label, href]) => ({ label, href, icon: label === "Home" ? "Home" : label === "Live map" ? "Map" : label === "Routes" ? "Routes" : "Ticket" }))} className="ss-website-tabs" />
+      <MobileAppPill />
     </div>
   );
 }
