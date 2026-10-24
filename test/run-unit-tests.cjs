@@ -16,3 +16,5 @@ require('./prepaint-parity.test.cjs');
 require('./changelog-version.test.cjs');
 require('./qr-code.test.cjs');
 require('./sw-navigation-safety.test.cjs');
+require('./tab-logic.test.cjs');
+require('./service-area.test.cjs');

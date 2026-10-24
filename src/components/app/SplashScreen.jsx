@@ -23,6 +23,7 @@ export default function SplashScreen() {
     const timer = window.setInterval(check, 80);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => { if (!visible) window.dispatchEvent(new Event("smart-safar:map-layout-changed")); }, [visible]);
   return <div className={`ss-splash ${visible ? "is-visible" : "is-hidden"}`} role="status" aria-live="polite" aria-hidden={!visible}>
     <span className="sr-only">Loading Smart Safar</span>
     <div className="ss-splash-brand"><BrandMark size="header" className="ss-splash-mark" /><span><strong className="ss-splash-wordmark">Smart Safar</strong><small className="ss-splash-tagline">Faisalabad Transit</small></span></div>

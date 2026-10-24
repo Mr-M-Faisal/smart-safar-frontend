@@ -215,9 +215,30 @@ test('captures narrow and wide app screenshots for the install manifest', async 
   fs.mkdirSync(output, { recursive: true });
   await page.goto(isPhone ? '/m' : '/m?preview=1');
   await expect(page.getByRole('navigation', { name: 'Mobile app navigation' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Where to?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Find your way through Faisalabad/ })).toBeVisible();
   await expect(page.locator('.ss-splash')).toHaveClass(/is-hidden/);
   await page.screenshot({ path: path.join(output, isPhone ? 'smart-safar-app-narrow.png' : 'smart-safar-app-wide.png'), animations: 'disabled' });
+});
+
+test('mobile transit map ignores out-of-area stop and bus coordinates', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'pixel-7', 'Service-area map bounds are checked on a phone-sized browser.');
+  await page.route('**/tile.openstreetmap.org/**', (route) => route.abort());
+  await page.route('**/api/routes/overview', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{ _id: routeId, routeName: 'Clock Tower Express', startPoint: 'Clock Tower', endPoint: 'D Ground', stops: [
+      { _id: 'inside', stopName: 'Clock Tower', latitude: 31.4181, longitude: 73.0776 },
+      { _id: 'outside', stopName: 'Distant point', latitude: 40.7128, longitude: -74.006 },
+    ], buses: [{ _id: busId, busNumber: 'SS-21', currentLocation: { latitude: 40.7128, longitude: -74.006 }, status: 'active' }] }]),
+  }));
+  await page.addInitScript(() => { localStorage.setItem('ss-onboarded', '1'); sessionStorage.setItem('ss-splash-shown', '1'); });
+  await page.goto('/m/map');
+  const map = page.locator('.leaflet-route-map');
+  await expect(map).toHaveAttribute('data-center-lat', /31\./, { timeout: 10000 });
+  const center = await map.evaluate((element) => [Number(element.dataset.centerLat), Number(element.dataset.centerLng)]);
+  expect(Math.abs(center[0] - 31.4181)).toBeLessThan(0.5);
+  expect(Math.abs(center[1] - 73.0776)).toBeLessThan(0.5);
+  await expect(map.locator('.ss-leaflet-marker')).toHaveCount(0);
 });
 
 function testInfoProjectIsDesktop(page) {

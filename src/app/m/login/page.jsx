@@ -9,6 +9,8 @@ import { saveSessionToken, storeCachedProfile } from "@/lib/session";
 import safeReturnTo from "@/lib/auth/safeReturnTo.cjs";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { homeForRole } from "@/lib/auth/roleHome";
+import HeroCard from "@/components/ui/brand/HeroCard";
+import Surface from "@/components/ui/brand/Surface";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
@@ -73,9 +75,10 @@ export default function MobileLoginPage() {
 
   if (auth.status === "loading" || (auth.status === "authenticated" && !switchAccount)) return <div aria-busy="true" className="app-screen grid min-h-[50vh] place-items-center text-sm font-semibold text-[#536bb7]">Opening your Smart Safar workspace…</div>;
 
-  return <div className="app-screen">
+  return <div className="app-screen space-y-4">
     {googleClientId && <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onLoad={() => setGoogleLoaded(true)} />}
-    <section className="app-card mx-auto max-w-md p-5">
+    <HeroCard eyebrow="Smart Safar · Faisalabad" title={mode === "signup" ? "Join the journey." : "Welcome back."} description="Sign in to book seats and manage your journeys." className="mx-auto max-w-md" />
+    <Surface as="section" className="mx-auto w-full max-w-md">
       <p className="app-eyebrow">Passenger access</p><h2 className="mt-2 text-xl font-bold text-[#293553]">{mode === "signup" ? "Create your account" : "Welcome back"}</h2><p className="app-muted mt-1">Sign in to book seats and manage your journeys.</p>
       {error && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{error}</p>}
       <form data-ss-dirty-form className="mt-5 grid gap-3" onSubmit={submit}>
@@ -86,7 +89,7 @@ export default function MobileLoginPage() {
       </form>
       {googleClientId && <><div className="my-4 text-center text-[10px] text-[#8992a8]">OR CONTINUE WITH</div><div className="flex justify-center" ref={buttonRef}/></>}
       <p className="mt-5 text-center text-xs text-[#77829a]">{mode === "signup" ? "Already have an account?" : "New to Smart Safar?"} <button className="font-bold text-[#536bb7]" onClick={() => setMode((value) => value === "signup" ? "login" : "signup")}>{mode === "signup" ? "Sign in" : "Create account"}</button></p>
-    </section>
+    </Surface>
     <Link href="/m/routes" className="mx-auto mt-4 block w-fit min-h-11 content-center text-xs font-bold text-[#536bb7]">Continue browsing routes →</Link>
   </div>;
 }

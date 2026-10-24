@@ -3,6 +3,8 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import BookingLink from "@/components/layout/BookingLink";
+import EyebrowPill from "@/components/ui/brand/EyebrowPill";
+import PillButton from "@/components/ui/brand/PillButton";
 
 const HomeRouteMap = dynamic(() => import("@/components/map/HomeRouteMap"), {
   ssr: false,
@@ -20,16 +22,12 @@ export default function HomePage() {
     <main className="overflow-hidden">
       <section className="hero-scene relative isolate mx-auto grid min-h-[calc(100svh-76px)] max-w-[1600px] items-center gap-6 px-[var(--layout-gutter)] py-6 sm:gap-8 sm:px-8 sm:py-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-14 lg:px-12 lg:py-16">
         <div className="animate-enter relative z-10 max-w-2xl">
-          <div className="hero-eyebrow mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-[#1e2d55]/45 px-3 py-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[#a5f1df] backdrop-blur-md sm:mb-7 sm:px-3.5 sm:text-sm sm:tracking-[0.1em]">
-            <span className="h-1.5 w-1.5 rounded-full bg-aqua" /> Faisalabad, One Stop Closer
-          </div>
+          <EyebrowPill size="hero" className="hero-eyebrow">Faisalabad, One Stop Closer</EyebrowPill>
           <h1 className="home-hero-title text-[length:var(--font-hero,clamp(2.1rem,9vw,2.9rem))] leading-[var(--line-hero,.98)] sm:text-[length:var(--font-hero,clamp(2.75rem,6.3vw,4.5rem))] lg:text-[length:var(--font-hero,clamp(3rem,6.5vw,6.3rem))] font-semibold text-white">Find your way<br />through <span className="font-serif font-normal italic text-aqua">Faisalabad.</span></h1>
           <p className="home-hero-copy mt-3 max-w-lg text-white/80 sm:mt-7">See routes, check bus updates, and plan your next trip across the city.</p>
           <div className="mt-5 flex flex-wrap items-center gap-2.5 sm:mt-9 sm:gap-3">
-            <Link href="/live-map" className="group inline-flex min-h-11 items-center gap-2.5 rounded-full bg-[#536bb7] px-4 py-3 text-[13px] font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#43599f] sm:min-h-12 sm:gap-3 sm:px-6 sm:py-3.5 sm:text-sm">
-              Explore live map <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span>
-            </Link>
-            <Link href="/routes" className="inline-flex min-h-11 items-center rounded-full border border-white/35 bg-white/[0.08] px-4 py-3 text-[13px] font-semibold text-white backdrop-blur transition hover:bg-white/[0.16] sm:px-6 sm:py-3.5 sm:text-sm">Browse routes</Link>
+            <PillButton href="/live-map" className="gap-2.5 sm:gap-3">Explore live map <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">→</span></PillButton>
+            <PillButton href="/routes" secondary>Browse routes</PillButton>
           </div>
           <div className="hero-facts mt-5 flex flex-wrap gap-x-4 gap-y-2.5 border-t border-white/20 pt-4 text-[11px] font-medium text-white/75 sm:mt-10 sm:gap-x-6 sm:gap-y-3 sm:pt-5 sm:text-xs">
             <span className="flex items-center gap-2"><span className="text-aqua">✳</span> Live bus locations</span>

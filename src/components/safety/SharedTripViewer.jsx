@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import usePolling from "@/lib/usePolling";
 import { subscribeBus } from "@/lib/realtime";
+import { FAISALABAD_CENTER } from "@/data/mapConfig";
+import { SERVICE_AREA_BOUNDS, normalizeServiceCoordinate } from "@/data/serviceArea";
 
 function timeLabel(value) {
   return value ? new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(value)) : "Waiting for bus location";
@@ -58,7 +60,7 @@ export default function SharedTripViewer({ shareToken }) {
       if (cancelled || !mapContainer.current) return;
       const L = module.default || module;
       leafletRef.current = L;
-      mapRef.current = L.map(mapContainer.current, { zoomControl: true, scrollWheelZoom: false }).setView([31.418, 73.079], 12);
+      mapRef.current = L.map(mapContainer.current, { zoomControl: true, scrollWheelZoom: false, minZoom: 9, maxBounds: L.latLngBounds(SERVICE_AREA_BOUNDS).pad(0.12), maxBoundsViscosity: 1 }).setView(FAISALABAD_CENTER, 12);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
@@ -78,8 +80,9 @@ export default function SharedTripViewer({ shareToken }) {
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    if (!mapReady || !L || !map || !location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) return;
-    const coordinates = [Number(location.latitude), Number(location.longitude)];
+    if (!mapReady || !L || !map || !location) return;
+    const coordinates = normalizeServiceCoordinate(location.latitude, location.longitude, { label: "shared bus", id: trip?.bus?._id || trip?.bus?.busNumber });
+    if (!coordinates) { markerRef.current?.remove(); markerRef.current = null; map.setView(FAISALABAD_CENTER, 12); return; }
     if (!markerRef.current) {
       markerRef.current = L.circleMarker(coordinates, { radius: 10, color: "#fff", weight: 3, fillColor: "#536bb7", fillOpacity: 1 }).addTo(map);
     } else markerRef.current.setLatLng(coordinates);
@@ -87,8 +90,9 @@ export default function SharedTripViewer({ shareToken }) {
     map.setView(coordinates, Math.max(map.getZoom(), 14), { animate: true });
   }, [mapReady, location?.latitude, location?.longitude, trip?.bus?.busNumber]);
 
-  const coordinatesValid = location && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
-  const mapLink = coordinatesValid ? `https://www.google.com/maps?q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}` : "";
+  const coordinates = location ? normalizeServiceCoordinate(location.latitude, location.longitude, { label: "shared bus", id: trip?.bus?._id || trip?.bus?.busNumber }) : null;
+  const coordinatesValid = Boolean(coordinates);
+  const mapLink = coordinatesValid ? `https://www.google.com/maps?q=${encodeURIComponent(coordinates.join(","))}` : "";
 
   return (
     <main className="min-h-[70vh] bg-[#f4f5fb] px-4 py-8 text-[#25304f] sm:px-8 sm:py-12">

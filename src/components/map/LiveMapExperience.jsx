@@ -14,6 +14,7 @@ import { FAISALABAD_CENTER } from "@/data/mapConfig";
 import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 import { getLocationFreshness, useLocationClock } from "@/lib/locationFreshness";
+import { SERVICE_AREA_BOUNDS, normalizeServiceCoordinate } from "@/data/serviceArea";
 
 function routeIdForBus(bus) {
   return typeof bus.route === "object" ? bus.route?._id : bus.route;
@@ -74,7 +75,7 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
       if (cancelled || !mapElement.current) return;
       const L = module.default || module;
       leafletRef.current = L;
-      const map = L.map(mapElement.current, { zoomControl: false, preferCanvas: true }).setView(FAISALABAD_CENTER, 13);
+      const map = L.map(mapElement.current, { zoomControl: false, preferCanvas: true, minZoom: 9, maxBounds: L.latLngBounds(SERVICE_AREA_BOUNDS).pad(0.12), maxBoundsViscosity: 1 }).setView(FAISALABAD_CENTER, 13);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -85,6 +86,7 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
       mapRef.current = map;
       if (mapController) mapController.current = map;
       setMapReady(true);
+      window.addEventListener("smart-safar:map-layout-changed", onLayoutChange);
 
       if ("ResizeObserver" in window) {
         resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
@@ -100,6 +102,7 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
       cancelled = true;
       resizeObserver?.disconnect();
       if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+      window.removeEventListener("smart-safar:map-layout-changed", onLayoutChange);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -113,6 +116,8 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
     };
   }, [mapController]);
 
+  function onLayoutChange() { mapRef.current?.invalidateSize({ pan: false }); }
+
   const pathKey = stops.map((stop) => `${stop.stopName}:${stop.latitude}:${stop.longitude}`).join("|");
   const lastPathKey = useRef("");
 
@@ -123,16 +128,15 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
     if (!mapReady || !L || !map || !routeLayer) return;
     routeLayer.clearLayers();
 
-    const routePoints = stops
-      .filter((stop) => stop.latitude != null && stop.longitude != null && Number.isFinite(Number(stop.latitude)) && Number.isFinite(Number(stop.longitude)))
-      .map((stop) => [Number(stop.latitude), Number(stop.longitude)]);
+    const routePoints = stops.map((stop) => normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName })).filter(Boolean);
 
     if (routePoints.length > 1) {
       L.polyline(routePoints, { color: "#20bba5", weight: 5, opacity: 0.88, dashArray: "8 9", lineCap: "round" }).addTo(routeLayer);
     }
     stops.forEach((stop, index) => {
-      if (stop.latitude == null || stop.longitude == null || !Number.isFinite(Number(stop.latitude)) || !Number.isFinite(Number(stop.longitude))) return;
-      L.circleMarker([Number(stop.latitude), Number(stop.longitude)], {
+      const point = normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName });
+      if (!point) return;
+      L.circleMarker(point, {
         radius: index === 0 || index === stops.length - 1 ? 8 : 6,
         color: "#ffffff", weight: 3, fillColor: index === 0 || index === stops.length - 1 ? "#20bba5" : "#7185c6", fillOpacity: 1,
       }).bindTooltip(tooltipText(stop.stopName), { direction: "top", offset: [0, -6] }).addTo(routeLayer);
@@ -152,16 +156,11 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
     const map = mapRef.current;
     if (!mapReady || !L || !busLayer || !map) return undefined;
     const frame = window.requestAnimationFrame(() => {
-      const located = buses.filter((bus) => {
-        const lat = Number(bus.currentLocation?.latitude);
-        const lon = Number(bus.currentLocation?.longitude);
-        return Number.isFinite(lat) && Number.isFinite(lon) && (dataSource === "demo" || getLocationFreshness(bus.lastLocationUpdate, locationClock).available);
-      });
+      const located = buses.filter((bus) => (dataSource === "demo" || getLocationFreshness(bus.lastLocationUpdate, locationClock).available) && normalizeServiceCoordinate(bus.currentLocation?.latitude, bus.currentLocation?.longitude, { label: "bus", id: bus._id || bus.busNumber }));
       const entries = new Map();
       if (located.length > 100) {
         located.forEach((bus) => {
-          const latitude = Number(bus.currentLocation.latitude);
-          const longitude = Number(bus.currentLocation.longitude);
+          const [latitude, longitude] = normalizeServiceCoordinate(bus.currentLocation.latitude, bus.currentLocation.longitude, { label: "bus", id: bus._id || bus.busNumber });
           const gridKey = `${Math.round(latitude / 0.005)}:${Math.round(longitude / 0.005)}`;
           if (!entries.has(gridKey)) entries.set(gridKey, []);
           entries.get(gridKey).push(bus);
@@ -173,8 +172,9 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
         const isCluster = members.length > 1;
         const key = isCluster ? `cluster:${groupKey}` : `bus:${members[0]._id}`;
         const bus = members[0];
-        const latitude = members.reduce((sum, item) => sum + Number(item.currentLocation.latitude), 0) / members.length;
-        const longitude = members.reduce((sum, item) => sum + Number(item.currentLocation.longitude), 0) / members.length;
+        const coordinates = members.map((item) => normalizeServiceCoordinate(item.currentLocation.latitude, item.currentLocation.longitude, { label: "bus", id: item._id || item.busNumber }));
+        const latitude = coordinates.reduce((sum, point) => sum + point[0], 0) / members.length;
+        const longitude = coordinates.reduce((sum, point) => sum + point[1], 0) / members.length;
         const selected = !isCluster && String(bus._id) === String(selectedBusId);
         const statusClass = bus.status === "maintenance" ? " is-maintenance" : bus.status === "idle" ? " is-idle" : "";
         const styleKey = isCluster ? `cluster:${members.length}` : `bus:${selected}:${statusClass}`;

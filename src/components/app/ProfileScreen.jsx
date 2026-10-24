@@ -8,6 +8,8 @@ import { apiRequest } from "@/lib/api";
 import { useAuth, updateAuthUser } from "@/lib/auth/AuthProvider";
 import { storeCachedProfile, storeRotatedSession } from "@/lib/session";
 import { useAppRefresh } from "@/components/app/AppRefreshContext";
+import HeroCard from "@/components/ui/brand/HeroCard";
+import Surface from "@/components/ui/brand/Surface";
 
 export default function ProfileScreen() {
   const auth = useAuth();
@@ -67,8 +69,8 @@ export default function ProfileScreen() {
 
   return <div className="app-screen space-y-4">
     <Link href={accountSettingsHref} className="inline-flex min-h-10 items-center text-xs font-semibold text-[#536bb7]">← Account settings</Link>
-    <section className="app-card p-5">
-      <div className="mb-5 flex items-center gap-3"><span className="grid h-14 w-14 place-items-center rounded-full bg-[#e9edff] text-lg font-bold text-[#536bb7]">{initials}</span><div><p className="text-base font-bold text-[#293553]">{auth.user?.name}</p><span className="mt-1 inline-block rounded-full bg-[#eef1fc] px-2.5 py-1 text-[10px] font-semibold text-[#536bb7]">{roleLabel}</span></div></div>
+    <HeroCard eyebrow="Account profile" title={auth.user?.name || "Smart Safar user"} description={auth.user?.email || "Profile details"} facts={[roleLabel, auth.user?.phone || "Phone not provided"]}><span className="absolute right-5 top-5 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-sm font-bold text-[#a5f1df]">{initials}</span></HeroCard>
+    <Surface as="section" className="p-5">
       <form onSubmit={saveProfile} className="grid gap-3">
         <label className="grid gap-1 text-xs font-semibold text-[#596681]">Full name<input required minLength={2} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} className="app-input"/></label>
         <label className="grid gap-1 text-xs font-semibold text-[#596681]">Phone<input type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9+()\s-]{6,20}" value={phone} onChange={(event) => setPhone(event.target.value)} className="app-input"/></label>
@@ -79,7 +81,7 @@ export default function ProfileScreen() {
       </form>
       <button type="button" onClick={() => setPasswordOpen(true)} className="mt-3 min-h-12 w-full rounded-xl border border-[#dfe3f1] bg-white text-sm font-semibold text-[#536bb7]">Change password</button>
       {message && <p role="status" className="mt-3 rounded-xl bg-[#f4f6fc] p-3 text-xs text-[#536bb7]">{message}</p>}
-    </section>
+    </Surface>
     <BottomSheet open={passwordOpen} title="Change password" onClose={() => setPasswordOpen(false)} dirty={Boolean(passwords.currentPassword || passwords.newPassword || passwords.confirm)}>
       <form data-ss-dirty-form onSubmit={changePassword} className="grid gap-3">
         {["currentPassword", "newPassword", "confirm"].map((field, index) => <label key={field} className="grid gap-1 text-xs font-semibold text-[#596681]">{["Current password", "New password", "Confirm new password"][index]}<input required minLength={index ? 6 : undefined} autoComplete={index ? "new-password" : "current-password"} type={showPasswords ? "text" : "password"} value={passwords[field]} onChange={(event) => setPasswords((current) => ({ ...current, [field]: event.target.value }))} className="app-input"/></label>)}

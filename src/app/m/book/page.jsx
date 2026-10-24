@@ -9,6 +9,10 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 import PaymentOptions from "@/components/booking/PaymentOptions";
 import SeatPicker from "@/components/booking/SeatPicker";
+import HeroCard from "@/components/ui/brand/HeroCard";
+import PillButton from "@/components/ui/brand/PillButton";
+import Surface from "@/components/ui/brand/Surface";
+import PanelTitle from "@/components/ui/brand/PanelTitle";
 
 const steps = ["Route", "Bus", "Seat", "Payment", "Confirm"];
 
@@ -97,13 +101,14 @@ export default function MobileBookingPage() {
     finally { setBusy(false); }
   }
 
-  if (auth.status === "loading") return <div className="app-screen"><div className="app-empty">Checking your passenger account…</div></div>;
-  if (auth.status !== "authenticated" || auth.role !== "commuter") return <div className="app-screen"><div className="app-card p-5"><h2 className="text-lg font-bold text-[#293553]">Passenger account required</h2><p className="app-muted mt-2">Sign in with a passenger account to reserve a seat.</p><Link href={`/m/login?returnTo=${encodeURIComponent(`/m/book${typeof window === "undefined" ? "" : window.location.search}`)}`} className="app-primary mt-4 w-full">Sign in</Link></div></div>;
+  if (auth.status === "loading") return <div className="app-screen"><Surface>Checking your passenger account…</Surface></div>;
+  if (auth.status !== "authenticated" || auth.role !== "commuter") return <div className="app-screen space-y-4"><HeroCard eyebrow="Guest preview" title="Check your journey before signing in." description="Choose a route and explore your options. Sign in when you’re ready to reserve." actions={<PillButton href={`/m/login?returnTo=${encodeURIComponent(`/m/book${typeof window === "undefined" ? "" : window.location.search}`)}`}>Sign in</PillButton>} /></div>;
 
-  return <div className="app-screen">
+  return <div className="app-screen space-y-4">
+    <PanelTitle eyebrow="Simple booking" title="Reserve your seat" />
     <div className="app-stepper" aria-label={`Step ${step + 1} of ${steps.length}`}>{steps.map((label, index) => <span key={label} className={index <= step ? "active" : ""}>{label}</span>)}</div>
     {error && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">{error}</p>}
-    <section className="app-card mt-4 p-4">
+    <Surface as="section" className="mt-4 p-4">
       <p className="app-eyebrow">Step {step + 1} of 5</p>
       <h2 className="mt-1 text-lg font-bold text-[#293553]">{["Choose a route", "Choose an operating bus", "Pick a seat", "Payment method", "Review your booking"][step]}</h2>
       <p className="app-muted mt-1">{["Select where you are travelling.", "Only buses with a driver on an active shift can be booked.", "Availability is confirmed again when you reserve.", "Cash payment is available when boarding.", "Check the details before you confirm."][step]}</p>
@@ -113,7 +118,7 @@ export default function MobileBookingPage() {
       {step === 3 && <div className="mt-4"><PaymentOptions value={payment} onChange={setPayment}/><label className="mt-4 flex min-h-[56px] items-start gap-3 rounded-xl bg-[#f6f7fb] p-3"><input type="checkbox" className="mt-1 h-4 w-4 accent-[#536bb7]" checked={shareLocation} onChange={(event) => setShareLocation(event.target.checked)} /><span className="text-xs leading-5 text-[#596681]"><strong>Share pickup location</strong><span className="block text-[#8992a8]">Optional. Location is shared only for this confirmed booking.</span></span></label></div>}
       {step === 4 && <div className="mt-4 rounded-xl bg-[#f7f8fc] p-4 text-sm text-[#46516d]"><p><strong>Route:</strong> {route?.routeName || "—"}</p><p className="mt-2"><strong>Bus:</strong> {selectedBus?.busNumber || "—"}</p><p className="mt-2"><strong>Seat:</strong> {seat || "—"}</p><p className="mt-2"><strong>Payment:</strong> {payment === "cash" ? "Cash on boarding" : "Online"}</p><p className="mt-2"><strong>Fare:</strong> {selectedBus?.fare ?? route?.fare ?? "To be confirmed"}</p></div>}
       <div className="mt-5 flex gap-2">{step > 0 && <button type="button" className="app-secondary flex-1" onClick={() => { setError(""); setStep((value) => value - 1); }}>Back</button>}{step < 4 ? <button type="button" className="app-primary flex-1" onClick={next} disabled={loading}>{loading ? "Loading…" : "Continue"}</button> : <button type="button" className="app-primary flex-1" onClick={reserve} disabled={busy}>{busy ? "Reserving…" : "Reserve seat"}</button>}</div>
-    </section>
+    </Surface>
     {locationPrimer && <div className="fixed inset-0 z-[1750] flex items-end justify-center bg-[#101a35]/45 p-3 sm:items-center"><section role="dialog" aria-modal="true" aria-labelledby="location-primer-title" className="w-full max-w-md rounded-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl"><p className="app-eyebrow">Optional location sharing</p><h2 id="location-primer-title" className="mt-2 text-lg font-bold text-[#293553]">Share your pickup point?</h2><p className="app-muted mt-2">Your browser will ask for location access. The pickup point is sent only with this booking and is shared with the assigned driver. You can leave sharing off.</p><button className="app-primary mt-5 w-full" onClick={() => { try { localStorage.setItem("ss-location-primer-seen", "1"); } catch (_error) {} setLocationPrimer(false); void reserve(); }}>Continue and reserve</button><button className="mt-2 min-h-11 w-full text-xs font-bold text-[#536bb7]" onClick={() => setLocationPrimer(false)}>Go back</button></section></div>}
     {confirmation && <div className="fixed inset-0 z-[1800] flex items-end justify-center bg-[#101a35]/45 p-3 sm:items-center"><section role="dialog" aria-modal="true" aria-labelledby="booking-confirm-title" className="w-full max-w-md rounded-[24px] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl"><p className="app-eyebrow">Booking complete</p><h2 id="booking-confirm-title" className="mt-2 text-xl font-bold text-[#293553]">Your seat is reserved</h2><p className="app-muted mt-2">{route?.routeName} · {selectedBus?.busNumber} · Seat {confirmation.seatNumber || seat}</p><p className="mt-3 text-xs text-[#68738e]">Payment is recorded by the transit server. Cash is due when boarding.</p><Link href="/m/trips" className="app-primary mt-5 w-full">View my trips</Link><button className="mt-3 min-h-11 w-full text-xs font-bold text-[#536bb7]" onClick={() => { setConfirmation(null); setStep(0); setBusId(""); setSeat(""); }}>Book another trip</button></section></div>}
   </div>;

@@ -3,6 +3,7 @@
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FAISALABAD_CENTER } from "@/data/mapConfig";
+import { SERVICE_AREA_BOUNDS, normalizeServiceCoordinate } from "@/data/serviceArea";
 
 const routeColors = ["#20bba5", "#7185c6", "#e49353", "#438fbb", "#b16baa", "#629a68"];
 
@@ -46,8 +47,13 @@ export default function LeafletRouteMap({
       if (cancelled || !containerRef.current) return;
       const L = module.default || module;
       leafletRef.current = L;
-      const map = L.map(containerRef.current, { zoomControl: false, preferCanvas: true, scrollWheelZoom: false })
+      const map = L.map(containerRef.current, { zoomControl: false, preferCanvas: true, scrollWheelZoom: false, minZoom: 9, maxBounds: L.latLngBounds(SERVICE_AREA_BOUNDS).pad(0.12), maxBoundsViscosity: 1 })
         .setView(FAISALABAD_CENTER, 12);
+      map.on("moveend", () => {
+        const center = map.getCenter();
+        containerRef.current?.setAttribute("data-center-lat", String(center.lat));
+        containerRef.current?.setAttribute("data-center-lng", String(center.lng));
+      });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -58,6 +64,7 @@ export default function LeafletRouteMap({
       busLayerRef.current = L.layerGroup().addTo(map);
       if (mapController) mapController.current = map;
       setMapReady(true);
+      window.addEventListener("smart-safar:map-layout-changed", onLayoutChange);
 
       if ("ResizeObserver" in window) {
         resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
@@ -73,6 +80,7 @@ export default function LeafletRouteMap({
       cancelled = true;
       resizeObserver?.disconnect();
       if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+      window.removeEventListener("smart-safar:map-layout-changed", onLayoutChange);
       mapRef.current?.remove();
       mapRef.current = null;
       segmentLayerRef.current = null;
@@ -82,6 +90,8 @@ export default function LeafletRouteMap({
       setMapReady(false);
     };
   }, [mapController]);
+
+  function onLayoutChange() { mapRef.current?.invalidateSize({ pan: false }); }
 
   const pathSignature = useMemo(() => routeSegments.map((segment) => `${segment.routeId || segment._id}:${(segment.stops || []).map((stop) => `${stop.stopName}:${stop.latitude}:${stop.longitude}`).join(";")}`).join("|"), [routeSegments]);
   const lastPathSignature = useRef("");
@@ -96,8 +106,7 @@ export default function LeafletRouteMap({
 
     routeSegments.forEach((segment, segmentIndex) => {
       const routeId = segment.routeId || segment._id;
-      const points = (segment.stops || []).filter((stop) => isCoordinate(stop.latitude, stop.longitude))
-        .map((stop) => [Number(stop.latitude), Number(stop.longitude)]);
+      const points = (segment.stops || []).map((stop) => normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName })).filter(Boolean);
       allPoints.push(...points);
       const isSelected = !selectedRouteId || String(routeId) === String(selectedRouteId);
       const color = routeColors[segmentIndex % routeColors.length];
@@ -118,8 +127,9 @@ export default function LeafletRouteMap({
       }
 
       (segment.stops || []).forEach((stop, stopIndex) => {
-        if (!isCoordinate(stop.latitude, stop.longitude)) return;
-        L.circleMarker([Number(stop.latitude), Number(stop.longitude)], {
+        const point = normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName });
+        if (!point) return;
+        L.circleMarker(point, {
           radius: isSelected ? (stopIndex === 0 || stopIndex === segment.stops.length - 1 ? 7 : 5) : 4,
           color: "#ffffff",
           weight: 2,
@@ -144,7 +154,8 @@ export default function LeafletRouteMap({
     busLayer.clearLayers();
 
     buses.forEach((bus) => {
-      if (!isCoordinate(bus.currentLocation?.latitude, bus.currentLocation?.longitude)) return;
+      const point = normalizeServiceCoordinate(bus.currentLocation?.latitude, bus.currentLocation?.longitude, { label: "bus", id: bus._id || bus.busNumber });
+      if (!point) return;
       const isSelected = String(bus._id) === String(selectedBusId);
       const stateClass = bus.status === "maintenance" ? " is-maintenance" : bus.status === "idle" ? " is-idle" : "";
       const icon = L.divIcon({
@@ -153,7 +164,7 @@ export default function LeafletRouteMap({
         iconSize: [38, 38],
         iconAnchor: [19, 19],
       });
-      const marker = L.marker([Number(bus.currentLocation.latitude), Number(bus.currentLocation.longitude)], {
+      const marker = L.marker(point, {
         icon,
         keyboard: true,
         title: bus.busNumber || "Transit bus",
