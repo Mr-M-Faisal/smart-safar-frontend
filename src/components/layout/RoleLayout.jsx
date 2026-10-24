@@ -3,13 +3,20 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import BrandMark from "@/components/layout/BrandMark";
+import InstallButton from "@/components/app/InstallButton";
+import BottomTabBar from "@/components/app/BottomTabBar";
+import ProfileMenu from "@/components/layout/ProfileMenu";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { homeForRole } from "@/lib/auth/roleHome";
 
 export default function RoleLayout({ role, title, links = [], children }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const auth = useAuth();
   const isDriver = role === "Driver";
   const isAdmin = role === "Administrator";
+  const roleKey = isAdmin ? "admin" : isDriver ? "driver" : "commuter";
 
   function linkIsActive(href) {
     const target = new URL(href, "https://smartsafar.invalid");
@@ -19,8 +26,8 @@ export default function RoleLayout({ role, title, links = [], children }) {
 
   return (
     <div className={`role-layout min-h-screen min-w-0 bg-canvas lg:grid ${isDriver ? "lg:grid-cols-[280px_minmax(0,1fr)]" : "lg:grid-cols-[250px_minmax(0,1fr)]"}`}>
-      <aside className={`sticky top-0 z-[1100] flex min-w-0 flex-col p-4 lg:h-screen lg:overflow-y-auto lg:p-6 ${isDriver ? "driver-sidebar" : "border-b border-slate-200 bg-white/95 shadow-[0_8px_22px_rgba(44,58,105,.07)] backdrop-blur-xl lg:border-b-0 lg:border-r lg:shadow-none"}`}>
-        <Link href="/" className={`relative z-10 inline-flex w-fit items-center gap-2 text-sm font-bold ${isDriver ? "driver-brand" : "text-ink"}`}>
+      <aside className={`sticky top-0 z-[1100] hidden min-w-0 flex-col p-4 lg:flex lg:h-screen lg:overflow-y-auto lg:p-6 ${isDriver ? "driver-sidebar" : "border-b border-slate-200 bg-white/95 shadow-[0_8px_22px_rgba(44,58,105,.07)] backdrop-blur-xl lg:border-b-0 lg:border-r lg:shadow-none"}`}>
+        <Link href={homeForRole(roleKey)} className={`relative z-10 inline-flex w-fit items-center gap-2 text-sm font-bold ${isDriver ? "driver-brand" : "text-ink"}`}>
           <BrandMark size="sm" tone={isDriver ? "dark" : "light"} />
           <span>Smart Safar <span className={`ml-1 font-medium ${isDriver ? "driver-brand-role" : "text-slate-500"}`}>/ {role}</span></span>
         </Link>
@@ -31,7 +38,7 @@ export default function RoleLayout({ role, title, links = [], children }) {
           <p className="mt-1 text-xs leading-5 text-white/65">Your route and shift tools, all in one place.</p>
         </div>}
 
-        <p className={`relative z-10 mb-2 mt-5 px-2 text-[9px] font-bold uppercase tracking-[.2em] ${isDriver ? "driver-sidebar-label lg:mt-9" : "text-[#9aa4ba] lg:mt-8"}`}>Workspace menu</p>
+        <p className={`relative z-10 mb-2 mt-5 hidden px-2 text-[9px] font-bold uppercase tracking-[.2em] lg:block ${isDriver ? "driver-sidebar-label lg:mt-9" : "text-[#9aa4ba] lg:mt-8"}`}>Workspace menu</p>
         <nav className={`relative z-10 flex gap-2 overflow-x-auto pb-1 lg:flex-col ${isDriver ? "driver-nav" : ""}`} aria-label={`${role} navigation`}>
           {links.map(({ label, href }, index) => {
             const isActive = linkIsActive(href);
@@ -50,13 +57,15 @@ export default function RoleLayout({ role, title, links = [], children }) {
           <span className="mt-4 block border-t border-white/15 pt-3 text-[9px] font-bold uppercase tracking-[.18em] text-white/45">Smart Safar · Faisalabad</span>
         </div>}
       </aside>
-      <main className="workspace-theme min-w-0 p-4 sm:p-8 lg:p-10">
+      <header className="fixed inset-x-0 top-0 z-[1400] flex min-h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur lg:hidden"><Link href={homeForRole(roleKey)} className="flex items-center gap-2"><BrandMark size="sm"/><span className="text-sm font-bold text-[#293553]">Smart Safar <small className="block text-[9px] font-medium text-[#77829a]">{role}</small></span></Link><div className="flex items-center gap-2"><InstallButton/>{auth.status === "authenticated" && <ProfileMenu name={auth.user?.name} email={auth.user?.email} role={role} variant="light" homeHref={homeForRole(roleKey)} homeLabel="Open dashboard"/>}</div></header>
+      <main className="workspace-theme min-w-0 px-4 pb-24 pt-20 sm:px-8 sm:pb-28 sm:pt-24 lg:p-10">
         <header className="mb-8">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-transit-700">{role} workspace</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">{title}</h1>
         </header>
         {children}
       </main>
+      <BottomTabBar label={`${role} navigation`} items={(isDriver ? [{ label: "Shift", href: "/driver", icon: "Bus" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Account", href: "/m/account", icon: "User" }] : isAdmin ? [{ label: "Dashboard", href: "/admin", icon: "Home" }, { label: "Buses", href: "/admin?tab=buses", icon: "Bus" }, { label: "Routes", href: "/admin?tab=routes", icon: "Routes" }, { label: "Drivers", href: "/admin?tab=drivers", icon: "User" }, { label: "Stops", href: "/admin?tab=routes#stops", icon: "Map" }] : [{ label: "Home", href: "/", icon: "Home" }, { label: "Map", href: "/live-map", icon: "Map" }, { label: "Routes", href: "/routes", icon: "Routes" }, { label: "Book", href: "/passenger", icon: "Ticket" }])} className="ss-role-tabs" />
     </div>
   );
 }

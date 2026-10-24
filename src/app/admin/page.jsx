@@ -8,6 +8,8 @@ import { clearSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import usePolling from "@/lib/usePolling";
+import BottomSheet from "@/components/app/BottomSheet";
+import SettingsScreen from "@/components/app/SettingsScreen";
 
 const initialData = { overview: null, buses: [], routes: [], drivers: [], shifts: [], adminBookings: [], reportItems: [], stopsByRoute: {}, alertsByRoute: {} };
 const adminTabs = ["overview", "drivers", "routes", "bookings", "buses", "reports"];
@@ -18,6 +20,8 @@ const endpointsByTab = {
   bookings: [["adminBookings", "/admin/bookings"]],
   buses: [["buses", "/buses"], ["routes", "/routes"], ["drivers", "/admin/drivers"]],
   reports: [["reportItems", "/reports"]],
+  stops: [["routesWithDetails", "/admin/routes-with-details"]],
+  settings: [["overview", "/admin/overview"]],
 };
 
 function idOf(value) { return typeof value === "object" && value ? value._id : value; }
@@ -41,7 +45,7 @@ function SelectField({ label, children, ...props }) {
   return <label className="block min-w-0"><span className="mb-1.5 block text-[11px] font-semibold text-[#596681]">{label}</span><select {...props} className="min-h-10 w-full rounded-xl border border-[#dfe3f1] bg-white px-3 text-sm text-[#293553] outline-none transition focus:border-[#8093d1] focus:ring-4 focus:ring-[#536bb7]/10">{children}</select></label>;
 }
 
-export default function AdminHomePage() {
+export function AdminHomePage({ mobileTab = null }) {
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const initialTabRef = useRef(adminTabs.includes(requestedTab) ? requestedTab : "overview");
@@ -65,12 +69,18 @@ export default function AdminHomePage() {
   const [bookingFilter, setBookingFilter] = useState("all");
   const [activeTab, setActiveTab] = useState(initialTabRef.current);
   const [loadingTab, setLoadingTab] = useState("");
+  const [mobileSheet, setMobileSheet] = useState("");
+  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [selectedBusId, setSelectedBusId] = useState("");
+  const [selectedRouteId, setSelectedRouteId] = useState("");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [driverFilter, setDriverFilter] = useState("all");
   const profileVerifiedRef = useRef(false);
   const loadedTabsRef = useRef(new Set());
 
   useEffect(() => {
-    setActiveTab(adminTabs.includes(requestedTab) ? requestedTab : "overview");
-  }, [requestedTab]);
+    setActiveTab(mobileTab || (adminTabs.includes(requestedTab) ? requestedTab : "overview"));
+  }, [requestedTab, mobileTab]);
 
   const loadData = useCallback(async (sessionToken, isActive = () => true, tab = "overview") => {
     setLoadingTab(tab);
@@ -82,7 +92,8 @@ export default function AdminHomePage() {
       setAdmin(auth.user);
       profileVerifiedRef.current = true;
     }
-    const results = await Promise.all((endpointsByTab[tab] || endpointsByTab.overview).map(async ([key, path]) => {
+    const dataEndpoints = mobileTab === "overview" && tab === "overview" ? [...endpointsByTab.overview, ...endpointsByTab.drivers, ...endpointsByTab.buses, ...endpointsByTab.reports] : endpointsByTab[tab] || endpointsByTab.overview;
+    const results = await Promise.all(dataEndpoints.map(async ([key, path]) => {
       try { return { key, value: await apiRequest(path, path === "/buses" ? {} : { token: sessionToken }) }; }
       catch (error) { return { key, error }; }
     }));
@@ -105,7 +116,7 @@ export default function AdminHomePage() {
     loadedTabsRef.current.add(tab);
     setLoadingTab("");
     setSessionState("ready");
-  }, [auth.role, auth.user]);
+  }, [auth.role, auth.user, mobileTab]);
   useEffect(() => {
     const handleExpired = (event) => { if (event.detail?.role === "admin") { setToken(null); setAdmin(null); setSessionState("expired"); } };
     window.addEventListener("smart-safar:auth-expired", handleExpired);
@@ -166,7 +177,7 @@ export default function AdminHomePage() {
   async function createDriver(event) {
     event.preventDefault();
     const saved = await mutate(() => apiRequest("/admin/drivers", { method: "POST", token, body: JSON.stringify(driverForm) }), "Driver account created. You can assign a bus below.");
-    if (saved) setDriverForm({ name: "", email: "", phone: "", password: "" });
+    if (saved) { setDriverForm({ name: "", email: "", phone: "", password: "" }); setMobileSheet(""); }
   }
 
   async function saveDriverEdits(event) {
@@ -191,13 +202,13 @@ export default function AdminHomePage() {
     event.preventDefault();
     const payload = { busNumber: busForm.busNumber.trim(), route: busForm.route, capacity: Number(busForm.capacity), ...(busForm.driver ? { driver: busForm.driver } : {}) };
     const saved = await mutate(() => apiRequest("/buses", { method: "POST", token, body: JSON.stringify(payload) }), "Bus added to the fleet.");
-    if (saved) setBusForm({ busNumber: "", route: "", capacity: "", driver: "" });
+    if (saved) { setBusForm({ busNumber: "", route: "", capacity: "", driver: "" }); setMobileSheet(""); }
   }
 
   async function createRoute(event) {
     event.preventDefault();
     const saved = await mutate(() => apiRequest("/routes", { method: "POST", token, body: JSON.stringify(routeForm) }), "Route created. Add its stops in the route setup flow before assigning buses.");
-    if (saved) setRouteForm({ routeName: "", startPoint: "", endPoint: "", description: "" });
+    if (saved) { setRouteForm({ routeName: "", startPoint: "", endPoint: "", description: "" }); setMobileSheet(""); }
   }
 
   async function deactivateRoute(route) {
@@ -209,7 +220,7 @@ export default function AdminHomePage() {
     event.preventDefault();
     const payload = { route: alertForm.route, message: alertForm.message.trim(), severity: alertForm.severity, ...(alertForm.expiresAt ? { expiresAt: new Date(alertForm.expiresAt).toISOString() } : {}) };
     const saved = await mutate(() => apiRequest("/route-alerts", { method: "POST", token, body: JSON.stringify(payload) }), "Route alert published.");
-    if (saved) setAlertForm({ route: "", message: "", expiresAt: "" });
+    if (saved) { setAlertForm({ route: "", message: "", expiresAt: "" }); setMobileSheet(""); }
   }
 
   async function removeRouteAlert(alert) {
@@ -240,7 +251,7 @@ export default function AdminHomePage() {
     event.preventDefault();
     const payload = { ...stopForm, latitude: Number(stopForm.latitude), longitude: Number(stopForm.longitude), stopOrder: Number(stopForm.stopOrder) };
     const saved = await mutate(() => apiRequest("/stops", { method: "POST", token, body: JSON.stringify(payload) }), "Stop added to the selected route.");
-    if (saved) setStopForm((current) => ({ ...current, stopName: "", latitude: "", longitude: "", stopOrder: String(Number(current.stopOrder) + 1) }));
+    if (saved) { setStopForm((current) => ({ ...current, stopName: "", latitude: "", longitude: "", stopOrder: String(Number(current.stopOrder) + 1) })); setMobileSheet(""); }
   }
 
   function signOut() { void revokeAndClearSession("admin"); setToken(null); setAdmin(null); setSessionState("signed-out"); setData(initialData); }
@@ -249,10 +260,70 @@ export default function AdminHomePage() {
 
   if (["signed-out", "expired", "denied"].includes(sessionState)) {
     const denied = sessionState === "denied";
-    return <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm"><span className="text-xs font-bold uppercase tracking-[.18em] text-transit-700">Administrator access</span><h2 className="mt-3 text-xl font-semibold text-ink">{denied ? "Admin access only" : sessionState === "expired" ? "Your session expired" : "Sign in to open the fleet dashboard"}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{denied ? "This account is not an administrator. Sign in using the admin credentials provisioned for your project." : "Authenticate with an administrator account to view and manage fleet data."}</p><Link href="/login" className="mt-5 inline-flex rounded-xl bg-transit-700 px-4 py-2.5 text-sm font-semibold text-white">Administrator sign in →</Link></section>;
+    return <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm"><span className="text-xs font-bold uppercase tracking-[.18em] text-transit-700">Administrator access</span><h2 className="mt-3 text-xl font-semibold text-ink">{denied ? "Admin access only" : sessionState === "expired" ? "Your session expired" : "Sign in to open the fleet dashboard"}</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{denied ? "This account is not an administrator. Sign in using the admin credentials provisioned for your project." : "Authenticate with an administrator account to view and manage fleet data."}</p><Link href={mobileTab ? "/m/login?returnTo=%2Fm%2Fadmin" : "/login"} className="mt-5 inline-flex rounded-xl bg-transit-700 px-4 py-2.5 text-sm font-semibold text-white">Administrator sign in →</Link></section>;
   }
   if (authState === "loading" && sessionState !== "error") return <div className="rounded-3xl border border-slate-200 bg-white p-7 text-sm text-slate-500" role="status">Loading secure fleet data…</div>;
   if (sessionState === "error") return <div className="rounded-3xl border border-rose-200 bg-rose-50 p-7 text-sm text-rose-800">{notice?.text || "The administrator profile could not be loaded."}<button onClick={() => setRefreshKey((key) => key + 1)} className="ml-4 rounded-lg bg-white px-3 py-1.5 font-semibold text-indigo-700">Retry</button></div>;
+
+  if (mobileTab) {
+    const selectedDriver = data.drivers.find((item) => String(item._id) === selectedDriverId);
+    const selectedBus = data.buses.find((item) => String(item._id) === selectedBusId);
+    const selectedRoute = data.routes.find((item) => String(item._id) === selectedRouteId);
+    const filteredDrivers = data.drivers.filter((driver) => `${driver.name} ${driver.email} ${driver.phone || ""}`.toLowerCase().includes(adminSearch.toLowerCase())).map((driver) => {
+      const bus = data.buses.find((item) => String(idOf(item.driver)) === String(driver._id)) || null;
+      const shift = data.shifts.find((item) => String(idOf(item.driver)) === String(driver._id) && item.status === "active");
+      const lastPosition = shift?.lastLocationAt || shift?.locationUpdatedAt || driver.lastLocationAt;
+      const offline = shift && lastPosition && Date.now() - new Date(lastPosition).getTime() > 120000;
+      const status = offline ? "Offline" : shift ? "On shift" : !bus ? "Unassigned" : "Idle";
+      return { driver, bus, shift, status, order: status === "On shift" ? 0 : status === "Idle" ? 1 : status === "Unassigned" ? 2 : 3 };
+    }).filter((entry) => driverFilter === "all" || entry.status.toLowerCase().replace(" ", "-") === driverFilter).sort((a, b) => a.order - b.order);
+    const visibleBuses = data.buses.filter((bus) => `${bus.busNumber} ${bus.driver?.name || ""} ${bus.route?.routeName || ""}`.toLowerCase().includes(adminSearch.toLowerCase()));
+    const visibleRoutes = data.routes.filter((route) => `${route.routeName} ${route.startPoint} ${route.endPoint}`.toLowerCase().includes(adminSearch.toLowerCase()));
+    const offlineBuses = data.buses.filter((bus) => bus.status === "offline").length;
+    const openReports = data.reportItems.filter((item) => item.status === "open").length;
+    const pendingPayments = data.adminBookings.filter((item) => item.paymentStatus === "pending").length;
+    const addTitles = { "add-driver": "Add driver", "add-bus": "Add bus", "add-route": "Create route", "add-stop": "Add stop", alert: "Publish route alert", "driver-detail": "Driver details", "bus-detail": "Bus details", "route-detail": "Route details", actions: "Quick actions" };
+    return <div className="ss-admin-mobile space-y-4" data-admin-tab={mobileTab}>
+      {notice && <div role={notice.type === "error" ? "alert" : "status"} className={`rounded-xl border px-3 py-2 text-xs ${notice.type === "error" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>{notice.text}</div>}
+      {loadingTab === activeTab && <div role="status" className="grid grid-cols-2 gap-2"><div className="app-empty animate-pulse">Loading admin data…</div><div className="app-empty animate-pulse">Please wait…</div></div>}
+      {mobileTab === "overview" && <>
+        <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-[#293553]">Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}{admin?.name ? `, ${admin.name.split(" ")[0]}` : ""}</p><p className="mt-1 text-[10px] text-[#8992a8]">Fleet operations overview</p></div><button onClick={() => setRefreshKey((key) => key + 1)} aria-label="Refresh admin data" className="grid h-11 w-11 place-items-center rounded-xl bg-white text-[#536bb7] shadow-sm">↻</button></div>
+        <div className="grid grid-cols-2 gap-2">{[["Active buses", data.overview?.buses?.active ?? 0, "/m/admin/buses"], ["Active shifts", data.overview?.activeShifts ?? activeShifts.length, "/m/admin/drivers"], ["Active routes", data.overview?.routes?.total ?? data.routes.length, "/m/admin/routes"], ["Bookings today", data.overview?.bookingsToday ?? 0, "/m/admin/bookings"]].map(([label, value, href]) => <Link key={label} href={href} className="rounded-2xl border border-[#e4e8f3] bg-white p-3 shadow-sm"><p className="text-[10px] text-[#77829a]">{label}</p><p className="mt-1 text-2xl font-bold text-[#293553]">{value}</p></Link>)}</div>
+        <section className="app-card p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-bold text-[#34405d]">Needs attention</h2><span className="text-[10px] text-[#8992a8]">{offlineBuses + filteredDrivers.filter((entry) => entry.status === "Unassigned").length + openReports + pendingPayments} items</span></div><div className="mt-2 divide-y divide-[#edf0f6] text-xs text-[#596681]">{offlineBuses > 0 && <p className="py-2">{offlineBuses} offline buses</p>}{filteredDrivers.filter((entry) => entry.status === "Unassigned").length > 0 && <p className="py-2">{filteredDrivers.filter((entry) => entry.status === "Unassigned").length} drivers without a bus</p>}{openReports > 0 && <Link href="/m/admin/reports" className="block py-2">{openReports} open passenger reports</Link>}{pendingPayments > 0 && <Link href="/m/admin/bookings" className="block py-2">{pendingPayments} pending payments</Link>}{offlineBuses + filteredDrivers.filter((entry) => entry.status === "Unassigned").length + openReports + pendingPayments === 0 && <p className="py-3">All clear</p>}</div></section>
+        <section className="app-card p-4"><div className="flex items-center justify-between"><h2 className="text-sm font-bold text-[#34405d]">Live fleet</h2><Link href="/m/admin/buses" className="text-xs font-semibold text-[#536bb7]">View all</Link></div>{data.buses.slice(0, 4).map((bus) => <div key={bus._id} className="flex min-w-0 items-center gap-2 border-t border-[#edf0f6] py-2"><span className={`h-2 w-2 rounded-full ${bus.status === "active" ? "bg-emerald-500" : bus.status === "maintenance" ? "bg-amber-500" : "bg-slate-300"}`}/><span className="min-w-0 flex-1 truncate text-xs font-semibold">{bus.busNumber} · {bus.route?.routeName || "No route"}</span><span className="text-[10px] text-[#77829a]">{bus.status || "Idle"}</span></div>)}{!data.buses.length && <p className="mt-2 text-xs text-[#8992a8]">Fleet details appear when available.</p>}</section>
+        <button type="button" onClick={() => setMobileSheet("actions")} aria-label="Quick actions" className="fixed bottom-20 right-5 z-[1200] grid h-14 w-14 place-items-center rounded-full bg-[#536bb7] text-2xl text-white shadow-xl">＋</button>
+      </>}
+      {mobileTab === "drivers" && <>
+        <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-bold text-[#293553]">Drivers</h2><button onClick={() => setMobileSheet("add-driver")} className="min-h-11 rounded-xl bg-[#536bb7] px-3 text-xs font-bold text-white">＋ Add driver</button></div>
+        <input aria-label="Search drivers" value={adminSearch} onChange={(event) => setAdminSearch(event.target.value)} placeholder="Search name, email, phone" className="app-input sticky top-0 z-10" />
+        <div className="flex gap-2 overflow-x-auto">{["all", "on shift", "idle", "unassigned"].map((item) => <button key={item} aria-pressed={driverFilter === item.replace(" ", "-")} onClick={() => setDriverFilter(item.replace(" ", "-"))} className={`min-h-10 shrink-0 rounded-full px-3 text-[11px] font-semibold capitalize ${driverFilter === item.replace(" ", "-") ? "bg-[#536bb7] text-white" : "bg-white text-[#596681]"}`}>{item}</button>)}</div>
+        <div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{filteredDrivers.map(({ driver, bus, status }) => <button key={driver._id} onClick={() => { setSelectedDriverId(String(driver._id)); setDriverEditId(String(driver._id)); setDriverEditForm({ name: driver.name || "", email: driver.email || "", phone: driver.phone || "" }); setMobileSheet("driver-detail"); }} className="flex min-h-[68px] w-full min-w-0 items-center gap-3 px-3 text-left"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e9edff] text-xs font-bold text-[#536bb7]">{(driver.name || "D").split(/\s+/).slice(0,2).map((part) => part[0]).join("").toUpperCase()}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#34405d]">{driver.name}</strong><small className="block truncate text-[10px] text-[#8992a8]">{driver.phone || driver.email} · {bus?.busNumber || "No bus"}</small></span><span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold ${status === "On shift" ? "bg-emerald-50 text-emerald-700" : status === "Offline" ? "bg-rose-50 text-rose-700" : status === "Unassigned" ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{status}</span></button>)}{!filteredDrivers.length && <p className="p-4 text-xs text-[#8992a8]">No matching drivers.</p>}</div>
+      </>}
+      {mobileTab === "buses" && <>
+        <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-bold text-[#293553]">Buses</h2><button onClick={() => setMobileSheet("add-bus")} className="min-h-11 rounded-xl bg-[#536bb7] px-3 text-xs font-bold text-white">＋ Add bus</button></div>
+        <input aria-label="Search buses" value={adminSearch} onChange={(event) => setAdminSearch(event.target.value)} placeholder="Search bus, driver, route" className="app-input" />
+        <div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{visibleBuses.map((bus) => <button key={bus._id} onClick={() => { setSelectedBusId(String(bus._id)); setMobileSheet("bus-detail"); }} className="flex min-h-[68px] w-full min-w-0 items-center gap-3 px-3 text-left"><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#34405d]">{bus.busNumber}</strong><small className="block truncate text-[10px] text-[#8992a8]">{bus.route?.routeName || "No route"} · {bus.driver?.name || "Unassigned"} · {bus.availableSeats ?? "—"} seats</small></span><span className="rounded-full bg-[#f0f2f9] px-2 py-1 text-[9px] font-semibold capitalize">{bus.status || "Idle"}</span></button>)}{!visibleBuses.length && <p className="p-4 text-xs text-[#8992a8]">No buses found.</p>}</div>
+      </>}
+      {(mobileTab === "routes" || mobileTab === "stops") && <>
+        <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-bold text-[#293553]">{mobileTab === "routes" ? "Routes" : "Stops"}</h2><button onClick={() => { if (mobileTab === "routes") setMobileSheet("add-route"); else setMobileSheet("add-stop"); }} className="min-h-11 rounded-xl bg-[#536bb7] px-3 text-xs font-bold text-white">＋ {mobileTab === "routes" ? "Create route" : "Add stop"}</button></div>
+        {mobileTab === "routes" ? <><input aria-label="Search routes" value={adminSearch} onChange={(event) => setAdminSearch(event.target.value)} placeholder="Search routes" className="app-input"/><div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{visibleRoutes.map((route) => { const stops = (data.stopsByRoute[route._id] || []).slice().sort((a,b) => (Number(a.stopOrder)||0)-(Number(b.stopOrder)||0)); const buses = data.buses.filter((bus) => String(idOf(bus.route)) === String(route._id)); const ready = buses.some((bus) => bus.operating); return <button key={route._id} onClick={() => { setSelectedRouteId(String(route._id)); setMobileSheet("route-detail"); }} className="flex min-h-[68px] w-full min-w-0 items-center gap-3 px-3 text-left"><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#34405d]">{route.routeName}</strong><small className="block truncate text-[10px] text-[#8992a8]">{stops.length} stops · {buses.length} buses · Rs. {route.fare ?? "—"}</small></span><span className={`rounded-full px-2 py-1 text-[9px] ${ready ? "bg-emerald-50 text-emerald-700" : buses.length ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>{ready ? "Operating" : buses.length ? "Needs stops" : "Needs bus"}</span></button>; })}{!visibleRoutes.length && <p className="p-4 text-xs text-[#8992a8]">No routes found.</p>}</div></> : <><SelectField label="Route" value={stopForm.route} onChange={(event) => setStopForm({ ...stopForm, route: event.target.value })}><option value="">Choose route</option>{data.routes.map((route) => <option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField>{data.routes.length ? <div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{(data.stopsByRoute[stopForm.route] || Object.values(data.stopsByRoute).flat()).slice().sort((a,b)=>(Number(a.stopOrder)||0)-(Number(b.stopOrder)||0)).map((stop) => <div key={stop._id} className="flex min-h-14 items-center gap-3 px-3"><span className="grid h-8 w-8 place-items-center rounded-full bg-[#eef1fc] text-xs font-bold text-[#536bb7]">{stop.stopOrder}</span><span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#34405d]">{stop.stopName}</span></div>)}</div> : <div className="app-empty">Create a route first. <button onClick={() => setMobileSheet("add-route")} className="font-bold text-[#536bb7]">Create route</button></div>}</>}
+      </>}
+      {mobileTab === "bookings" && <><div className="flex items-center justify-between"><h2 className="text-lg font-bold">Bookings</h2><select aria-label="Filter bookings" value={bookingFilter} onChange={(event) => setBookingFilter(event.target.value)} className="app-input w-auto"><option value="all">All</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="completed">Completed</option></select></div><div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{data.adminBookings.filter((item) => bookingFilter === "all" || item.status === bookingFilter).map((item) => <div key={item._id} className="flex items-center gap-3 p-3"><span className="min-w-0 flex-1"><strong className="block truncate text-xs">{item.route?.routeName || "Route"} · {item.user?.name || "Passenger"}</strong><small className="text-[10px] text-[#8992a8]">Seat {item.seatNumber || "—"} · {item.status} · payment {item.paymentStatus}</small></span>{item.status === "confirmed" && <button onClick={() => cancelBooking(item)} className="min-h-10 rounded-lg px-2 text-[10px] font-bold text-rose-700">Cancel</button>}</div>)}</div></>}
+      {mobileTab === "reports" && <><h2 className="text-lg font-bold">Reports</h2><div className="app-card divide-y divide-[#edf0f6] overflow-hidden">{data.reportItems.map((item) => <article key={item._id} className="p-3"><div className="flex items-center justify-between gap-2"><strong className="text-xs">{item.bus?.busNumber || "Bus report"} · {item.reportType}</strong><span className="text-[10px] capitalize text-[#77829a]">{item.status}</span></div><p className="mt-1 text-xs text-[#596681]">{item.description}</p><div className="mt-2 flex gap-2">{item.status === "open" && <button onClick={() => updateReportStatus(item,"reviewed")} className="min-h-10 rounded-lg bg-[#f0f2f9] px-3 text-[10px] font-semibold">Review</button>}{item.status !== "resolved" && <button onClick={() => updateReportStatus(item,"resolved")} className="min-h-10 rounded-lg bg-[#536bb7] px-3 text-[10px] font-semibold text-white">Resolve</button>}</div></article>)}</div></>}
+      {mobileTab === "settings" && <SettingsScreen admin />}
+      <BottomSheet open={Boolean(mobileSheet)} title={addTitles[mobileSheet] || mobileSheet} onClose={() => setMobileSheet("")} dirty={mobileSheet === "add-driver" ? Boolean(driverForm.name || driverForm.email || driverForm.phone || driverForm.password) : mobileSheet === "add-bus" ? Boolean(busForm.busNumber || busForm.capacity) : mobileSheet === "add-route" ? Boolean(routeForm.routeName || routeForm.startPoint || routeForm.endPoint) : mobileSheet === "add-stop" ? Boolean(stopForm.stopName || stopForm.latitude || stopForm.longitude) : false}>
+        {mobileSheet === "actions" && <div className="grid gap-2">{[["Add driver","add-driver"],["Add bus","add-bus"],["Add route","add-route"],["Add stop","add-stop"],["Publish alert","alert"]].map(([label, next]) => <button key={next} onClick={() => setMobileSheet(next)} className="min-h-12 rounded-xl bg-[#f4f6fc] px-4 text-left text-sm font-semibold text-[#46516d]">＋ {label}</button>)}</div>}
+        {mobileSheet === "add-driver" && <form onSubmit={createDriver} className="grid gap-3"><Field label="Full name" required minLength={2} autoComplete="name" value={driverForm.name} onChange={(event) => setDriverForm({...driverForm,name:event.target.value})}/><Field label="Email address" required type="email" autoComplete="email" value={driverForm.email} onChange={(event) => setDriverForm({...driverForm,email:event.target.value})}/><Field label="Phone (optional)" type="tel" inputMode="tel" autoComplete="tel" value={driverForm.phone} onChange={(event) => setDriverForm({...driverForm,phone:event.target.value})}/><Field label="Temporary password" required minLength={6} type="password" autoComplete="new-password" value={driverForm.password} onChange={(event) => setDriverForm({...driverForm,password:event.target.value})}/><button disabled={busy} className="app-primary w-full">{busy ? "Saving…" : "Create driver"}</button></form>}
+        {mobileSheet === "add-bus" && <form onSubmit={createBus} className="grid gap-3"><Field label="Bus number" required value={busForm.busNumber} onChange={(event) => setBusForm({...busForm,busNumber:event.target.value})}/><Field label="Seat capacity" required type="number" min="1" value={busForm.capacity} onChange={(event) => setBusForm({...busForm,capacity:event.target.value})}/><SelectField label="Route" required value={busForm.route} onChange={(event) => setBusForm({...busForm,route:event.target.value})}><option value="">Choose route</option>{data.routes.map((route)=><option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><SelectField label="Driver (optional)" value={busForm.driver} onChange={(event) => setBusForm({...busForm,driver:event.target.value})}><option value="">Leave unassigned</option>{data.drivers.map((driver)=><option key={driver._id} value={driver._id}>{driver.name}</option>)}</SelectField><button disabled={busy || !data.routes.length} className="app-primary w-full">Add bus</button></form>}
+        {mobileSheet === "add-route" && <form onSubmit={createRoute} className="grid gap-3"><Field label="Route name" required value={routeForm.routeName} onChange={(event) => setRouteForm({...routeForm,routeName:event.target.value})}/><Field label="Start point" required value={routeForm.startPoint} onChange={(event) => setRouteForm({...routeForm,startPoint:event.target.value})}/><Field label="End point" required value={routeForm.endPoint} onChange={(event) => setRouteForm({...routeForm,endPoint:event.target.value})}/><Field label="Description (optional)" value={routeForm.description} onChange={(event) => setRouteForm({...routeForm,description:event.target.value})}/><button disabled={busy} className="app-primary w-full">Create route</button></form>}
+        {mobileSheet === "add-stop" && <form onSubmit={createStop} className="grid gap-3"><SelectField label="Route" required value={stopForm.route} onChange={(event) => {const route=event.target.value; const order=Math.max(0,...(data.stopsByRoute[route]||[]).map((stop)=>Number(stop.stopOrder)||0))+1; setStopForm({...stopForm,route,stopOrder:String(order)});}}><option value="">Choose route</option>{data.routes.map((route)=><option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><Field label="Stop name" required value={stopForm.stopName} onChange={(event)=>setStopForm({...stopForm,stopName:event.target.value})}/><Field label="Latitude" required type="number" inputMode="decimal" step="any" min="-90" max="90" value={stopForm.latitude} onChange={(event)=>setStopForm({...stopForm,latitude:event.target.value})}/><Field label="Longitude" required type="number" inputMode="decimal" step="any" min="-180" max="180" value={stopForm.longitude} onChange={(event)=>setStopForm({...stopForm,longitude:event.target.value})}/><Field label="Stop order" required type="number" min="1" value={stopForm.stopOrder} onChange={(event)=>setStopForm({...stopForm,stopOrder:event.target.value})}/><button disabled={busy || !data.routes.length} className="app-primary w-full">Add stop</button></form>}
+        {mobileSheet === "driver-detail" && selectedDriver && <div className="grid gap-3"><p className="text-xs text-[#77829a]">{selectedDriver.email}</p><form onSubmit={saveDriverEdits} className="grid gap-3"><Field label="Full name" required value={driverEditForm.name} onChange={(event)=>setDriverEditForm({...driverEditForm,name:event.target.value})}/><Field label="Phone" type="tel" inputMode="tel" value={driverEditForm.phone} onChange={(event)=>setDriverEditForm({...driverEditForm,phone:event.target.value})}/><Field label="Email address" required type="email" value={driverEditForm.email} onChange={(event)=>setDriverEditForm({...driverEditForm,email:event.target.value})}/><button disabled={busy} className="app-primary">Save details</button></form><SelectField label="Assign bus" value={idOf(selectedDriver.assignedBus) || ""} onChange={(event)=>void assignDriver(selectedDriver,event.target.value)}><option value="">Unassigned</option>{data.buses.filter((bus)=>!bus.driver || String(idOf(bus.driver))===String(selectedDriver._id)).map((bus)=><option key={bus._id} value={bus._id}>{bus.busNumber} · {bus.route?.routeName}</option>)}</SelectField><Link href={`/admin?tab=drivers#shifts`} className="text-xs font-semibold text-[#536bb7]">Shift history →</Link></div>}
+        {mobileSheet === "bus-detail" && selectedBus && <div className="grid gap-3"><p className="text-sm font-semibold">{selectedBus.busNumber} · {selectedBus.route?.routeName || "No route"}</p><SelectField label="Status" value={selectedBus.status || "idle"} onChange={(event)=>void updateBus(selectedBus,{status:event.target.value})}><option value="idle">Idle</option><option value="maintenance">Maintenance</option></SelectField><SelectField label="Route" value={idOf(selectedBus.route)||""} onChange={(event)=>void updateBus(selectedBus,{route:event.target.value})}><option value="">Choose route</option>{data.routes.map((route)=><option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><button type="button" onClick={()=>void deleteBus(selectedBus)} className="min-h-11 rounded-xl border border-rose-200 text-xs font-semibold text-rose-700">Remove bus</button></div>}
+        {mobileSheet === "route-detail" && selectedRoute && <div><p className="text-xs text-[#77829a]">{selectedRoute.startPoint} → {selectedRoute.endPoint} · {data.stopsByRoute[selectedRoute._id]?.length || 0} stops</p><ol className="mt-3 space-y-2">{(data.stopsByRoute[selectedRoute._id]||[]).slice().sort((a,b)=>(Number(a.stopOrder)||0)-(Number(b.stopOrder)||0)).map((stop)=><li key={stop._id} className="rounded-xl bg-[#f6f7fb] p-3 text-xs">{stop.stopOrder}. {stop.stopName}</li>)}</ol><button onClick={()=>{setAlertForm({...alertForm,route:selectedRoute._id});setMobileSheet("alert");}} className="app-primary mt-4 w-full">Publish passenger alert</button></div>}
+        {mobileSheet === "alert" && <form onSubmit={createRouteAlert} className="grid gap-3"><SelectField label="Route" required value={alertForm.route} onChange={(event)=>setAlertForm({...alertForm,route:event.target.value})}><option value="">Choose route</option>{data.routes.map((route)=><option key={route._id} value={route._id}>{route.routeName}</option>)}</SelectField><SelectField label="Severity" required value={alertForm.severity} onChange={(event)=>setAlertForm({...alertForm,severity:event.target.value})}><option value="info">Info</option><option value="delay">Delay</option><option value="disruption">Disruption</option></SelectField><Field label="Notice" required maxLength={500} value={alertForm.message} onChange={(event)=>setAlertForm({...alertForm,message:event.target.value})}/><button disabled={busy} className="app-primary w-full">Publish alert</button></form>}
+      </BottomSheet>
+    </div>;
+  }
 
   return (
     <div className="workspace-theme space-y-9 text-[#293553]" data-admin-tab={activeTab.replace("#", "")}>
@@ -357,6 +428,8 @@ export default function AdminHomePage() {
     </div>
   );
 }
+
+export default AdminHomePage;
 
 
 

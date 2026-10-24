@@ -13,6 +13,12 @@ test("expired token is treated as a guest", () => {
   assert.equal(result.status, "guest");
 });
 
+test("expired access token stays authenticated when a refresh token exists", () => {
+  const result = resolveAuthState({ token: token({ role: "driver", exp: 100 }), storedRole: "driver", hasRefreshToken: true, now: 101_000 });
+  assert.equal(result.status, "authenticated");
+  assert.equal(result.role, "driver");
+});
+
 test("malformed token is treated as a guest", () => {
   assert.equal(resolveAuthState({ token: "not-a-jwt" }).status, "guest");
 });

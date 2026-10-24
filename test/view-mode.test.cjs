@@ -30,7 +30,8 @@ test('web-to-app route mapping preserves query parameters and safely filters ret
   assert.equal(mapWebToApp('/passenger', '?tab=history'), '/m/trips?tab=history');
   assert.equal(mapWebToApp('/passenger', '?route=abc'), '/m/book?route=abc');
   assert.equal(mapWebToApp('/login', '?returnTo=https%3A%2F%2Fevil.example'), '/m/login');
-  assert.equal(mapWebToApp('/admin'), null);
+  assert.equal(mapWebToApp('/admin'), '/m/admin');
+  assert.equal(mapWebToApp('/admin', '?tab=drivers'), '/m/admin/drivers?tab=drivers');
   assert.equal(mapWebToApp('/safety/track', '?token=shared'), null);
 });
 
@@ -39,4 +40,6 @@ test('app-to-web route mapping and preview mode are stable', () => {
   assert.equal(mapAppToWeb('/m/trips', '?tab=history'), '/passenger?tab=history');
   assert.equal(mapAppToWeb('/m', '?preview=1'), null);
   assert.equal(mapAppToWeb('/m/map', '?returnTo=%2F'), '/live-map?returnTo=%2F');
+  assert.equal(mapAppToWeb('/m/admin/drivers'), '/admin?tab=drivers');
+  assert.equal(mapAppToWeb('/m/admin/stops'), '/admin?tab=routes');
 });

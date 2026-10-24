@@ -5,6 +5,7 @@ import ServiceWorkerRegister from "@/components/layout/ServiceWorkerRegister";
 import RouteAccessibility from "@/components/layout/RouteAccessibility";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { AppModeProvider } from "@/lib/AppModeProvider";
+import InstallPromptProvider from "@/lib/pwa/InstallPromptProvider";
 
 export const metadata = {
   title: "Smart Safar | Faisalabad Transit",
@@ -52,10 +53,12 @@ export default function RootLayout({ children }) {
       <body>
         <AppModeProvider>
           <AuthProvider>
+            <InstallPromptProvider>
             <ServiceWorkerRegister />
             <Suspense fallback={null}><RouteAccessibility /></Suspense>
             <ThemeBootstrap />
             {children}
+            </InstallPromptProvider>
           </AuthProvider>
         </AppModeProvider>
       </body>

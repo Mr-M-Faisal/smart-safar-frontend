@@ -10,12 +10,13 @@ function decodePayload(token) {
   } catch { return null; }
 }
 
-function resolveAuthState({ token, profile, storedRole, now = Date.now() }) {
+function resolveAuthState({ token, profile, storedRole, hasRefreshToken = false, now = Date.now() }) {
   if (!token) return { status: "guest", role: null, user: null, token: null };
   const payload = decodePayload(token);
-  if (!payload || !ROLES.has(payload.role) || (storedRole && storedRole !== payload.role) || !Number.isFinite(payload.exp) || payload.exp * 1000 <= now) {
+  if (!payload || !ROLES.has(payload.role) || (storedRole && storedRole !== payload.role) || !Number.isFinite(payload.exp)) {
     return { status: "guest", role: null, user: null, token: null };
   }
+  if (payload.exp * 1000 <= now && !hasRefreshToken) return { status: "guest", role: null, user: null, token: null };
   return { status: "authenticated", role: payload.role, user: profile?.role === payload.role ? profile : null, token };
 }
 

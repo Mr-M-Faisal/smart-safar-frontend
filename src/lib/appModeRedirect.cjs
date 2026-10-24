@@ -18,7 +18,11 @@ function safeQuery(params) {
 function mapWebToApp(pathname = "/", search = "") {
   const params = parseSearch(search);
   const path = pathname.replace(/\/+$/, "") || "/";
-  if (path === "/admin" || path.startsWith("/admin/") || path === "/safety/track" || path.startsWith("/safety/track/")) return null;
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    const tabPath = { drivers: "/m/admin/drivers", buses: "/m/admin/buses", routes: "/m/admin/routes", stops: "/m/admin/stops", bookings: "/m/admin/bookings", reports: "/m/admin/reports", settings: "/m/admin/settings" };
+    return `${tabPath[params.get("tab")] || (path.startsWith("/admin/") ? `/m/admin/${path.slice("/admin/".length)}` : "/m/admin")}${safeQuery(params)}`;
+  }
+  if (path === "/safety/track" || path.startsWith("/safety/track/")) return null;
   if (path === "/passenger" || path.startsWith("/passenger/") || path === "/booking-preview" || path.startsWith("/booking-preview/")) {
     return params.get("tab") === "history" ? `/m/trips${safeQuery(params)}` : `/m/book${safeQuery(params)}`;
   }
@@ -34,6 +38,12 @@ function mapAppToWeb(pathname = "/", search = "") {
   if (path === "/m") return `/${safeQuery(params)}`;
   if (path === "/m/book" || path.startsWith("/m/book/")) return `/passenger${safeQuery(params)}`;
   if (path === "/m/trips" || path === "/m/account") return `/passenger${safeQuery(params)}`;
+  if (path === "/m/admin" || path.startsWith("/m/admin/")) {
+    const tabFromPath = { "/m/admin": "overview", "/m/admin/drivers": "drivers", "/m/admin/buses": "buses", "/m/admin/routes": "routes", "/m/admin/stops": "routes", "/m/admin/bookings": "bookings", "/m/admin/reports": "reports", "/m/admin/settings": "overview" };
+    if (!Object.hasOwn(tabFromPath, path)) return null;
+    params.set("tab", tabFromPath[path]);
+    return `/admin${safeQuery(params)}`;
+  }
   const mappings = [["/m/routes", "/routes"], ["/m/map", "/live-map"], ["/m/login", "/login"], ["/m/driver", "/driver"]];
   const found = mappings.find(([from]) => path === from || path.startsWith(`${from}/`));
   return found ? `${found[1]}${path.slice(found[0].length)}${safeQuery(params)}` : null;

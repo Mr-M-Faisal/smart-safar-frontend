@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { revokeAndClearSession } from "@/lib/session";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 import BookingLink from "@/components/layout/BookingLink";
 import BrandMark from "@/components/layout/BrandMark";
 import ConnectivityNotice from "@/components/layout/ConnectivityNotice";
-import InstallPrompt from "@/components/layout/InstallPrompt";
+import InstallButton from "@/components/app/InstallButton";
+import BottomTabBar from "@/components/app/BottomTabBar";
+import { homeForRole } from "@/lib/auth/roleHome";
 
 const links = [
   ["Home", "/"],
@@ -25,22 +26,17 @@ function isNavigationActive(pathname, href) {
 export default function PublicLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
   const signInHref = typeof window === "undefined" ? "/login" : `/login?returnTo=${encodeURIComponent(`${pathname}${window.location.search}${window.location.hash}`)}`;
   const auth = useAuth();
-  const passenger = auth.status === "authenticated" && auth.role === "commuter" ? auth.user : null;
-  useEffect(() => setMenuOpen(false), [pathname]);
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const closeOnEscape = (event) => { if (event.key === "Escape") setMenuOpen(false); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [menuOpen]);
+  const signedIn = auth.status === "authenticated";
+  const profile = signedIn ? auth.user : null;
+  const roleLabel = auth.role === "admin" ? "Administrator" : auth.role === "driver" ? "Driver" : "Passenger";
+  const logoHref = signedIn ? homeForRole(auth.role, false) : "/";
   return (
     <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-night text-white">
-      <header className="public-header sticky top-0 z-[1200] border-b border-[#d9def0] bg-[#eef0fa]/95 text-[#25304f] shadow-[0_5px_24px_rgba(40,52,92,.08)] backdrop-blur-xl">
+      <header className="public-header sticky top-0 z-[1400] border-b border-[#d9def0] bg-[#eef0fa]/95 text-[#25304f] shadow-[0_5px_24px_rgba(40,52,92,.08)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-[var(--layout-gutter)] py-2.5 sm:gap-4 sm:px-8 sm:py-4 lg:px-12">
-          <Link href="/" className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Smart Safar home">
+          <Link href={logoHref} className="flex min-w-0 items-center gap-2 sm:gap-3" aria-label="Smart Safar home">
             <BrandMark size="header" className="public-brand-mark" />
             <span className="min-w-0">
               <span className="block whitespace-nowrap text-[13px] font-bold tracking-tight text-[#25304f] sm:text-sm">Smart Safar</span>
@@ -55,28 +51,13 @@ export default function PublicLayout({ children }) {
             })}
           </nav>
           <div className="flex shrink-0 items-center gap-2">
-            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : passenger ? <ProfileMenu name={passenger.name} email={passenger.email} role="Passenger" variant="light" dashboardLinks={[{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }, { label: "Report an issue", href: "/passenger#report" }]} onSignOut={() => { void revokeAndClearSession("commuter"); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
-            <button type="button" className="grid h-11 w-11 place-items-center rounded-xl border border-[#d9def0] bg-white text-[#40599f] transition hover:bg-[#f6f7fc] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#536bb7] lg:hidden" aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={menuOpen} aria-controls="public-mobile-menu" onClick={() => setMenuOpen((open) => !open)}>
-              <span aria-hidden="true" className="text-xl leading-none">{menuOpen ? "×" : "☰"}</span>
-            </button>
+            <InstallButton />
+            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={auth.role === "commuter" ? [{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }, { label: "Report an issue", href: "/passenger#report" }] : [{ label: "Open dashboard", href: homeForRole(auth.role, false) }]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
           </div>
         </div>
-        <div className="border-t border-[#d9def0] bg-white/55 px-[var(--layout-gutter)] py-1.5 lg:hidden">
-          <div className="mx-auto flex max-w-[1440px] justify-end sm:px-8"><Link href="/m" onClick={(event) => { document.cookie = `ss-view=app; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; }} className="inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-[11px] font-bold text-[#465a9c] transition hover:bg-white"><span aria-hidden="true">⌂</span> Open mobile app</Link></div>
-        </div>
-        {menuOpen && <nav id="public-mobile-menu" aria-label="Mobile navigation" className="border-t border-[#d9def0] bg-[#eef0fa] px-[var(--layout-gutter)] py-2 text-[#34405d] shadow-lg lg:hidden">
-          <div className="mx-auto grid max-w-[1440px] gap-1 sm:px-8">
-            {links.map(([label, href]) => {
-              const active = isNavigationActive(pathname, href);
-              const NavLink = href === "/passenger" ? BookingLink : Link;
-              return <NavLink key={href} href={href} aria-current={active ? "page" : undefined} className={`flex min-h-11 items-center rounded-xl px-3 text-sm font-semibold ${active ? "bg-white text-[#405ba7] shadow-sm" : "text-[#596681] hover:bg-white/70"}`}>{label}<span aria-hidden="true" className="ml-auto text-[#7185c6]">→</span></NavLink>;
-            })}
-          </div>
-        </nav>}
       </header>
       <ConnectivityNotice />
-      <InstallPrompt placement="website" />
-      <div className="flex-1 bg-[#f4f5fb] lg:bg-transparent">{children}</div>
+      <div className="flex-1 bg-[#f4f5fb] pb-20 lg:bg-transparent lg:pb-0">{children}</div>
       <footer className="border-t border-white/15 bg-gradient-to-br from-[#344d91] via-[#40599f] to-[#26386e] text-white">
         <div className="mx-auto grid max-w-[1440px] gap-7 px-5 py-8 sm:grid-cols-2 sm:px-8 sm:gap-12 sm:py-12 lg:grid-cols-[1.35fr_.8fr_1fr] lg:px-12 lg:py-16">
           <div>
@@ -112,6 +93,7 @@ export default function PublicLayout({ children }) {
           </div>
         </div>
       </footer>
+      <BottomTabBar label="Website navigation" items={links.map(([label, href]) => ({ label, href, icon: label === "Home" ? "Home" : label === "Live map" ? "Map" : label === "Routes" ? "Routes" : "Ticket" }))} className="ss-website-tabs" />
     </div>
   );
 }

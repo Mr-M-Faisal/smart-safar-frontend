@@ -9,6 +9,7 @@ import { clearSessionToken, revokeAndClearSession } from "@/lib/session";
 import ProfileMenu from "@/components/layout/ProfileMenu";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import useDriverTracking from "@/features/driver/useDriverTracking";
+import BottomSheet from "@/components/app/BottomSheet";
 
 
 
@@ -43,7 +44,7 @@ function InfoCard({ label, value }) {
   return <div className="rounded-2xl border border-white bg-white/85 p-4 shadow-[0_8px_24px_rgba(53,67,112,.05)]"><p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#8992a8]">{label}</p><p className="mt-2 break-words text-sm font-semibold text-[#34405d]">{value || "—"}</p></div>;
 }
 
-export function DriverHomePage() {
+export function DriverHomePage({ mobile = false }) {
   const auth = useAuth();
   const [token, setToken] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -60,6 +61,7 @@ export function DriverHomePage() {
   const [seatError, setSeatError] = useState(null);
   const [seatState, setSeatState] = useState({ seats: [], occupied: 0, capacity: 0 });
   const [lastShiftEndedAt, setLastShiftEndedAt] = useState(null);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const activeShift = profile?.activeShift;
   const authState = pageState === "ready" ? "authenticated" : ["signed-out", "expired", "denied"].includes(pageState) ? "unauthenticated" : "loading";
 
@@ -244,12 +246,25 @@ export function DriverHomePage() {
     };
   }, [activeShift?._id, locationRefresh, pageState, token]);
 
+  if (mobile) {
+    if (authState === "loading" || pageState === "loading") return <div className="app-screen"><div role="status" className="app-empty animate-pulse">Loading your driver shift…</div></div>;
+    if (pageState !== "ready") return <div className="app-screen"><section className="app-card p-5"><h2 className="text-lg font-bold">{pageState === "denied" ? "Driver access only" : pageState === "expired" ? "Your session expired" : "Sign in to manage your shift"}</h2><p className="app-muted mt-2">{pageMessage || "Use the driver account assigned by your administrator."}</p><Link href="/m/login?returnTo=%2Fm%2Fdriver" className="app-primary mt-4 w-full">Driver sign in</Link></section></div>;
+    const nextStop = (route?.stops || []).slice().sort((a,b) => (Number(a.stopOrder)||0)-(Number(b.stopOrder)||0))[0]?.stopName;
+    return <div className="app-screen space-y-4">
+      <section className="app-card p-5"><p className="app-eyebrow">Your shift</p><h2 className="mt-2 text-xl font-bold text-[#293553]">{activeShift ? "You’re on shift" : "Ready to drive?"}</h2><p className="app-muted mt-1">{activeShift ? `Started ${timeLabel(activeShift.startedAt)}` : "Start your assigned route when you’re ready."}</p>{activeShift && <p className="mt-4 font-mono text-3xl font-bold text-[#405ba7]"><ShiftTimer startedAt={activeShift.startedAt}/></p>}<button type="button" disabled={working || (!activeShift && !hasBusAssignment)} onClick={() => { if (activeShift && !window.confirm("End your current shift?")) return; void handleShiftAction(activeShift ? "end" : "start"); }} className={`mt-5 min-h-14 w-full rounded-2xl text-sm font-bold text-white shadow-lg disabled:opacity-50 ${activeShift ? "bg-[#b95750]" : "bg-[#536bb7]"}`}>{working ? "Updating shift…" : activeShift ? "End shift" : hasBusAssignment ? "Start shift" : "No bus assigned"}</button></section>
+      {pageMessage && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{pageMessage}</p>}
+      <section className="app-card p-4"><div className="flex items-center justify-between"><div><p className="app-eyebrow">Assigned service</p><h3 className="mt-1 text-base font-bold text-[#34405d]">{assignedBusName || "No bus assigned"}</h3><p className="mt-1 text-xs text-[#77829a]">{route?.routeName || "Route not assigned"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${activeShift ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{activeShift ? "Active" : "Idle"}</span></div><div className="mt-3 flex items-center justify-between border-t border-[#edf0f6] pt-3 text-xs"><span className="text-[#77829a]">GPS status</span><strong className={tracking.status === "Good" ? "text-emerald-700" : tracking.status === "Permission denied" ? "text-rose-700" : "text-amber-700"}>{tracking.status}</strong></div>{nextStop && <p className="mt-2 text-xs text-[#77829a]">Next stop · <strong className="text-[#34405d]">{nextStop}</strong></p>}<button onClick={() => setMobileDetailsOpen(true)} className="mt-3 min-h-11 w-full rounded-xl bg-[#f2f4fb] text-xs font-semibold text-[#536bb7]">View shift details</button></section>
+      {activeShift && <section className="app-card p-4"><div className="flex items-center justify-between"><h3 className="text-sm font-bold text-[#34405d]">Seat status</h3><button onClick={() => void loadDriverSeats()} className="min-h-10 px-3 text-xs font-semibold text-[#536bb7]">Refresh</button></div><p className="mt-1 text-xs text-[#77829a]">{seatState.occupied || 0} of {seatState.capacity || bus?.capacity || 0} seats occupied</p><button type="button" disabled={seatBusy} onClick={() => void seatAction(null,"walk-in")} className="app-secondary mt-3 w-full">＋ Add walk-in passenger</button></section>}
+      <BottomSheet open={mobileDetailsOpen} title="Shift details" onClose={() => setMobileDetailsOpen(false)}><div className="space-y-3 text-sm text-[#596681]"><p><strong>Bus:</strong> {assignedBusName || "Unassigned"}</p><p><strong>Route:</strong> {route?.routeName || "Not assigned"}</p><p><strong>GPS:</strong> {tracking.status}{tracking.lastSentSeconds != null ? ` · updated ${tracking.lastSentSeconds}s ago` : ""}</p><p><strong>Seats occupied:</strong> {seatState.occupied || 0}/{seatState.capacity || bus?.capacity || 0}</p><Link href="/m/map" className="app-primary w-full">Open live map</Link>{activeShift && <button onClick={() => setLocationRefresh((value)=>value+1)} className="app-secondary w-full">Refresh shared pickup locations</button>}{locationsState === "error" && <p role="alert" className="text-xs text-rose-700">{locationsMessage}</p>}{passengerLocations.slice(0,5).map((item)=><p key={item.bookingId} className="rounded-xl bg-[#f6f7fb] p-3 text-xs">{item.passenger?.name || "Passenger"} · pickup shared for this trip</p>)}</div></BottomSheet>
+    </div>;
+  }
+
   return (
     <main className="driver-scene workspace-theme relative isolate min-h-[70vh] bg-[#f4f5fb] px-4 py-8 text-[#25304f] sm:px-8 sm:py-12 lg:px-12">
       <div className="mx-auto w-full max-w-[1180px]">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#536bb7]">Driver workspace · Faisalabad</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#25304f] sm:text-4xl">Good day{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#68738e]">Check your assigned vehicle and control your current transit shift.</p></div>
-          {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" onSignOut={signOut} />}
+          {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" homeHref="/driver" homeLabel="Open dashboard" onSignOut={signOut} />}
         </div>
 
         {authState === "loading" && pageState !== "error" && <div className="mt-8 rounded-3xl border border-white bg-white p-6 text-sm text-[#68738e] shadow-sm" role="status">Loading your driver profile…</div>}

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
-import { clearSessionToken, readCachedProfile, readSessionRole, readSessionToken, storeCachedProfile } from "@/lib/session";
+import { clearSessionToken, readCachedProfile, readRefreshToken, readSessionRole, readSessionToken, storeCachedProfile } from "@/lib/session";
 import safeReturnTo from "@/lib/auth/safeReturnTo.cjs";
 import authState from "@/lib/auth/authState.cjs";
 
@@ -36,7 +36,7 @@ function updateAuthSnapshot(update) {
 function readLocalAuth() {
   const token = readSessionToken();
   const storedRole = token ? readSessionRole(token) : null;
-  const resolved = authState.resolveAuthState({ token, profile: null, storedRole });
+  const resolved = authState.resolveAuthState({ token, profile: null, storedRole, hasRefreshToken: Boolean(storedRole && readRefreshToken(storedRole)) });
   if (resolved.status === "guest") {
     if (storedRole) clearSessionToken(storedRole);
     return { status: "guest", user: null, role: null, token: null, validated: true };
@@ -53,7 +53,7 @@ export function AuthProvider({ children }) {
   const validateProfile = useCallback(async ({ force = false } = {}) => {
     const local = readLocalAuth();
     if (local.status !== "authenticated") { setAuth(local); return local; }
-    if (!force && local.token === authRef.current.token && Date.now() - lastProfileValidationAt < 5 * 60 * 1000) {
+    if (!force && local.validated && local.token === authRef.current.token && Date.now() - lastProfileValidationAt < 5 * 60 * 1000) {
       setAuth({ ...local, user: local.user || authRef.current.user, validated: authRef.current.validated });
       return local;
     }
@@ -71,8 +71,8 @@ export function AuthProvider({ children }) {
       return profile;
     } catch (error) {
       if (error.status === 401) {
-        clearSessionToken(local.role);
-        setAuth({ status: "guest", user: null, role: null, token: null, validated: true });
+        if (error.code !== "REFRESH_REJECTED") clearSessionToken(local.role);
+        setAuth({ status: "guest", user: null, role: null, token: null, validated: true, message: error.message });
         return null;
       }
       setAuth((current) => ({ ...current, validated: true }));

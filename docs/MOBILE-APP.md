@@ -19,7 +19,11 @@ No backend or AWS deployment configuration was changed. Existing API, session, b
 | `/m/login` | Passenger sign-in/registration and configured Google sign-in |
 | `/m/driver` | Reuses the driver shift and location tracking screen |
 
-The app shell provides its own top bar and bottom tabs, safe-area and keyboard-aware viewport sizing, onboarding, a per-session animated splash, connectivity feedback, and Home-only install guidance. The service worker continues to bypass private HTML and authenticated API content.
+The app shell provides its own top bar and bottom tabs, safe-area and keyboard-aware viewport sizing, onboarding, a per-session animated splash, connectivity feedback, and a shared install action where the browser supports installation. The service worker continues to bypass private HTML and authenticated API content.
+
+## Install on a phone
+
+The app is installable from `localhost` during local development and from an HTTPS deployment or HTTPS tunnel. A plain LAN address such as `http://192.168.x.x` is not a secure install context. On Android Chrome/Edge, use **Install** and confirm the browser prompt. On iOS Safari, use **Install**, then Share → Add to Home Screen → Add; iOS does not expose a programmatic install dialog. The browser always asks the user before installing. APK packaging with Trusted Web Activity or Capacitor is a separate future option if a downloadable package is needed.
 
 ## PWA assets
 

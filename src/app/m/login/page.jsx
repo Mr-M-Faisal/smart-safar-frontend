@@ -7,11 +7,14 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { saveSessionToken, storeCachedProfile } from "@/lib/session";
 import safeReturnTo from "@/lib/auth/safeReturnTo.cjs";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { homeForRole } from "@/lib/auth/roleHome";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 export default function MobileLoginPage() {
   const router = useRouter();
+  const auth = useAuth();
   const buttonRef = useRef(null);
   const callbackRef = useRef(null);
   const [mode, setMode] = useState("login");
@@ -23,13 +26,14 @@ export default function MobileLoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [returnTo, setReturnTo] = useState("/m/trips");
+  const [switchAccount, setSwitchAccount] = useState(false);
 
   const finish = useCallback((result) => {
     if (!result?.token || !["commuter", "driver", "admin"].includes(result.role)) { setError("The server returned an invalid account response."); return; }
     saveSessionToken(result.token, result.role, result.refreshToken);
     storeCachedProfile(result);
     const requested = safeReturnTo(returnTo, "/m/trips");
-    const destination = result.role === "admin" ? "/admin" : result.role === "driver" ? "/m/driver" : (requested.startsWith("/m/") ? requested : "/m/trips");
+    const destination = result.role !== "commuter" ? homeForRole(result.role, true) : (requested.startsWith("/m/") ? requested : "/m/trips");
     router.replace(destination);
   }, [returnTo, router]);
 
@@ -45,7 +49,10 @@ export default function MobileLoginPage() {
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("returnTo");
     if (requested) setReturnTo(safeReturnTo(requested, "/m/trips"));
-  }, []);
+    const params = new URLSearchParams(window.location.search);
+    setSwitchAccount(params.get("switch") === "1");
+    if (auth.status === "authenticated" && params.get("switch") !== "1") router.replace(homeForRole(auth.role, true));
+  }, [auth.status, auth.role, router]);
   useEffect(() => {
     if (!googleClientId || !googleLoaded || !window.google?.accounts?.id || !buttonRef.current) return;
     buttonRef.current.replaceChildren();
@@ -63,6 +70,8 @@ export default function MobileLoginPage() {
     } catch (requestError) { setError(requestError.message || "Sign-in failed. Check your details and try again."); }
     finally { setBusy(false); }
   }
+
+  if (auth.status === "loading" || (auth.status === "authenticated" && !switchAccount)) return <div aria-busy="true" className="app-screen grid min-h-[50vh] place-items-center text-sm font-semibold text-[#536bb7]">Opening your Smart Safar workspace…</div>;
 
   return <div className="app-screen">
     {googleClientId && <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" onLoad={() => setGoogleLoaded(true)} />}

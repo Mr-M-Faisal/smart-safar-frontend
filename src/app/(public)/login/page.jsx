@@ -9,11 +9,14 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { clearSessionToken, saveSessionToken, storeCachedProfile } from "@/lib/session";
 import safeReturnTo from "@/lib/auth/safeReturnTo.cjs";
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { homeForRole } from "@/lib/auth/roleHome";
 
 const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
 export default function LoginPage() {
   const router = useRouter();
+  const auth = useAuth();
   const googleButtonRef = useRef(null);
   const googleCallbackRef = useRef(null);
   const [mode, setMode] = useState("login");
@@ -25,6 +28,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [testRole, setTestRole] = useState("driver");
+  const [switchAccount, setSwitchAccount] = useState(false);
   const testLoginEnabled = process.env.NEXT_PUBLIC_ENABLE_LOCAL_TEST_LOGIN === "true";
 
   const finishSignIn = useCallback((result) => {
@@ -41,8 +45,14 @@ export default function LoginPage() {
     const requestedReturnTo = params.get("returnTo");
     const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
     const safeDestination = safeReturnTo(requestedReturnTo, null);
-    router.replace(result.role === "admin" ? "/admin" : result.role === "driver" ? "/driver" : (safeDestination && !safeDestination.startsWith("/login") ? safeDestination : commuterDestination));
+    router.replace(result.role !== "commuter" ? homeForRole(result.role, false) : (safeDestination && !safeDestination.startsWith("/login") ? safeDestination : commuterDestination));
   }, [router]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setSwitchAccount(params.get("switch") === "1");
+    if (auth.status === "authenticated" && params.get("switch") !== "1") router.replace(homeForRole(auth.role, false));
+  }, [auth.status, auth.role, router]);
 
   const handleGoogleCredential = useCallback(async (credential) => {
     if (!credential || submitting) return;
@@ -101,6 +111,8 @@ export default function LoginPage() {
       setSubmitting(false);
     }
   }
+
+  if (auth.status === "loading" || (auth.status === "authenticated" && !switchAccount)) return <main aria-busy="true" className="grid min-h-[70vh] place-items-center bg-[#f4f5fb] text-sm font-semibold text-[#536bb7]">Opening your Smart Safar workspace…</main>;
 
   return (
     <>

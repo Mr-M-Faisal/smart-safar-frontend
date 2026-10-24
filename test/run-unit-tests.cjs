@@ -6,3 +6,5 @@ require('./app-mode.test.cjs');
 require('./project-hygiene.test.cjs');
 require('./view-mode.test.cjs');
 require('./splash-policy.test.cjs');
+require('./role-home.test.cjs');
+require('./settings.test.cjs');

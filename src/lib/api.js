@@ -209,6 +209,8 @@ export async function apiRequest(path, { token, ...options } = {}) {
       if (refreshed?.token) {
         ({ response, payload } = await rawRequest(path, options, refreshed.token));
         retriedAfterRefresh = true;
+      } else if (refreshed?.rejected) {
+        throw new ApiError("Your session expired. Please sign in again.", 401, { code: "REFRESH_REJECTED" });
       }
     }
   }
