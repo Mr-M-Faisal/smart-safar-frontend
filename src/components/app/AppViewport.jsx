@@ -21,7 +21,7 @@ import { AppRefreshProvider } from "@/components/app/AppRefreshContext";
 
 const passengerTabs = [{ label: "Home", href: "/m", icon: "Home", exact: true, matchPaths: ["/m/book"] }, { label: "Map", href: "/m/map", icon: "Map", exact: true }, { label: "Routes", href: "/m/routes", icon: "Routes", exact: true, matchPaths: ["/m/routes"] }, { label: "Trips", href: "/m/trips", icon: "Trips", exact: true }, { label: "Account", href: "/m/account", icon: "User", exact: true, matchPaths: ["/m/account"] }];
 const driverTabs = [{ label: "Shift", href: "/m/driver", icon: "Bus", exact: true }, { label: "Map", href: "/m/map", icon: "Map", exact: true }, { label: "Account", href: "/m/account", icon: "User", exact: true, matchPaths: ["/m/account"] }];
-const adminTabs = [{ label: "Dashboard", href: "/m/admin", icon: "Home", exact: true }, { label: "Buses", href: "/m/admin/buses", icon: "Bus", exact: true }, { label: "Routes", href: "/m/admin/routes", icon: "Routes", exact: true }, { label: "Drivers", href: "/m/admin/drivers", icon: "User", exact: true }, { label: "Stops", href: "/m/admin/stops", icon: "Map", exact: true }];
+const adminTabs = [{ label: "Home", href: "/m/admin", icon: "Home", exact: true }, { label: "Buses", href: "/m/admin/buses", icon: "Bus", exact: true }, { label: "Routes", href: "/m/admin/routes", icon: "Routes", exact: true }, { label: "Drivers", href: "/m/admin/drivers", icon: "User", exact: true }, { label: "Stops", href: "/m/admin/stops", icon: "Map", exact: true }, { label: "Alerts", href: "/m/admin/alerts", icon: "Bell", exact: true }];
 const pageTitles = [["/m", "Home"], ["/m/map", "Live map"], ["/m/routes", "Routes"], ["/m/book", "Book a seat"], ["/m/trips", "My trips"], ["/m/account", "Account"], ["/m/account/profile", "Profile"], ["/m/login", "Sign in"], ["/m/driver", "Driver shift"]];
 
 function viewCookie(view) {
@@ -42,10 +42,10 @@ export default function AppViewport({ children }) {
   const previousPath = useRef(null);
   const isAdmin = pathname.startsWith("/m/admin") || auth.role === "admin";
   const tabs = isAdmin ? adminTabs : auth.role === "driver" ? driverTabs : passengerTabs;
-  const title = pathname.startsWith("/m/admin") ? ({ "/m/admin": "Admin dashboard", "/m/admin/buses": "Buses", "/m/admin/routes": "Routes", "/m/admin/drivers": "Drivers", "/m/admin/stops": "Stops", "/m/admin/settings": "Settings", "/m/admin/bookings": "Bookings", "/m/admin/reports": "Reports" }[pathname] || "Admin") : pageTitles.find(([path]) => path === pathname)?.[1] || (pathname.startsWith("/m/routes/") ? "Route details" : "Smart Safar");
+  const title = pathname.startsWith("/m/admin") ? ({ "/m/admin": "Admin dashboard", "/m/admin/buses": "Buses", "/m/admin/routes": "Routes", "/m/admin/drivers": "Drivers", "/m/admin/stops": "Stops", "/m/admin/alerts": "Alerts", "/m/admin/settings": "Settings", "/m/admin/bookings": "Bookings", "/m/admin/reports": "Reports" }[pathname] || "Admin") : pageTitles.find(([path]) => path === pathname)?.[1] || (pathname.startsWith("/m/routes/") ? "Route details" : "Smart Safar");
   const isHome = pathname === "/m";
   const hideTabs = ["/m/login", "/m/book"].includes(pathname) || onboarding || keyboardOpen;
-  const tabRoots = isAdmin ? ["/m/admin", "/m/admin/buses", "/m/admin/routes", "/m/admin/drivers", "/m/admin/stops"] : auth.role === "driver" ? ["/m/driver", "/m/map", "/m/account"] : ["/m", "/m/map", "/m/routes", "/m/trips", "/m/account"];
+  const tabRoots = isAdmin ? ["/m/admin", "/m/admin/buses", "/m/admin/routes", "/m/admin/drivers", "/m/admin/stops", "/m/admin/alerts"] : auth.role === "driver" ? ["/m/driver", "/m/map", "/m/account"] : ["/m", "/m/map", "/m/routes", "/m/trips", "/m/account"];
   const isTabRoot = tabRoots.includes(pathname);
 
   useEffect(() => {
