@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { saveBookingSelection } from "@/lib/bookingSelection";
 
-export default function BookingLink({ routeId, busId, seatNumber, className, children, ...props }) {
+export default function BookingLink({ routeId, busId, seatNumber, requireAccount = false, className, children, ...props }) {
   const auth = useAuth();
   const [online, setOnline] = useState(true);
 
@@ -26,7 +26,9 @@ export default function BookingLink({ routeId, busId, seatNumber, className, chi
   const previewHref = `/booking-preview?${routeQuery}`;
   const bookingHref = `/passenger?${routeQuery}#booking`;
   const signInHref = `/login?${routeId ? `bookingRoute=${encodeURIComponent(routeId)}${busId ? `&bookingBus=${encodeURIComponent(busId)}` : ""}${seatNumber ? `&bookingSeat=${encodeURIComponent(seatNumber)}` : ""}` : "booking=1"}`;
-  const href = auth.status === "authenticated" && auth.role === "commuter" ? bookingHref : auth.status === "loading" ? signInHref : previewHref;
+  const signUpQuery = routeId ? `bookingRoute=${encodeURIComponent(routeId)}${busId ? `&bookingBus=${encodeURIComponent(busId)}` : ""}${seatNumber ? `&bookingSeat=${encodeURIComponent(seatNumber)}` : ""}` : "booking=1";
+  const signUpHref = `/login?mode=signup${auth.status === "authenticated" ? "&switch=1" : ""}&${signUpQuery}`;
+  const href = auth.status === "authenticated" && auth.role === "commuter" ? bookingHref : requireAccount ? signUpHref : auth.status === "loading" ? signInHref : previewHref;
 
   if (!online) {
     return (

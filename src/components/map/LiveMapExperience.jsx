@@ -15,6 +15,7 @@ import RevealOnScroll from "@/components/ui/RevealOnScroll";
 import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelection";
 import { getLocationFreshness, useLocationClock } from "@/lib/locationFreshness";
 import { SERVICE_AREA_BOUNDS, normalizeServiceCoordinate } from "@/data/serviceArea";
+import BookingLink from "@/components/layout/BookingLink";
 
 function routeIdForBus(bus) {
   return typeof bus.route === "object" ? bus.route?._id : bus.route;
@@ -376,6 +377,7 @@ export default function LiveMapExperience() {
 
           <aside className="min-w-0 rounded-[1.75rem] border border-white bg-[#e9ebf8] p-4 shadow-[0_16px_42px_rgba(53,67,112,.09)] sm:p-5">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#536bb7]">Selected route</p><h2 className="mt-2 break-words text-xl font-semibold text-[#293553]">{selectedRoute?.routeName || "Transit routes"}</h2><p className="mt-1 text-xs text-[#7b859c]">{stops.length} stops · {visibleBuses.length} buses</p></div><span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-[#536bb7] shadow-sm" aria-hidden="true">⌖</span></div>
+            {selectedRoute && <BookingLink routeId={selectedRoute._id} requireAccount className="mt-3 flex min-h-11 items-center justify-between rounded-xl bg-[#536bb7] px-4 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.18)] transition hover:-translate-y-0.5 hover:bg-[#43599f]"><span>Book this route</span><span aria-hidden="true">→</span></BookingLink>}
 
             <div className="mt-5 rounded-2xl border border-white/90 bg-[#fffdf8] p-4 shadow-sm">
               <h3 className="text-xs font-bold uppercase tracking-[.13em] text-[#68738e]">Bus details</h3>

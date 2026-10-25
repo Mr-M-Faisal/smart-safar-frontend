@@ -66,7 +66,7 @@ export default function PublicLayout({ children }) {
           <div className="flex shrink-0 items-center gap-2">
             <DesktopRefreshButton />
             <InstallButton />
-            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: "/account/settings" }, ...(auth.role === "commuter" ? [{ label: "My bookings", href: "/passenger#history" }, { label: "Trip security", href: "/passenger#security" }] : [])]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
+            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: auth.role === "admin" ? "/admin?tab=settings" : "/account/settings" }, ...(auth.role === "commuter" ? [{ label: "My trips", href: "/passenger?tab=history" }, { label: "Trip security", href: "/passenger?tab=security" }] : [])]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
           </div>
         </div>
       </header>
@@ -115,8 +115,6 @@ export default function PublicLayout({ children }) {
         { label: "Map", href: "/live-map", icon: "Map" },
         { label: "Routes", href: "/routes", icon: "Routes" },
         { label: "Book", href: "/passenger", icon: "Ticket", matchPaths: ["/booking-preview"] },
-        { label: "Trips", href: "/passenger?tab=history", icon: "Trips" },
-        { label: "Settings", href: "/account/settings", icon: "Settings" },
       ]} className="ss-app-tabs" />
     </div>
   );

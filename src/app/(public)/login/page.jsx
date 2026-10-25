@@ -43,7 +43,7 @@ export default function LoginPage() {
     const requestedBookingBus = params.get("bookingBus") || params.get("bus");
     const requestedBookingSeat = params.get("bookingSeat") || params.get("seat");
     const requestedReturnTo = params.get("returnTo");
-    const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/passenger";
+    const commuterDestination = requestedBookingRoute ? `/passenger?route=${encodeURIComponent(requestedBookingRoute)}${requestedBookingBus ? `&bus=${encodeURIComponent(requestedBookingBus)}` : ""}${requestedBookingSeat ? `&seat=${encodeURIComponent(requestedBookingSeat)}` : ""}#booking` : params.get("booking") === "1" ? "/passenger#booking" : "/";
     const safeDestination = safeReturnTo(requestedReturnTo, null);
     router.replace(result.role !== "commuter" ? homeForRole(result.role, false) : (safeDestination && !safeDestination.startsWith("/login") ? safeDestination : commuterDestination));
   }, [router]);
@@ -51,6 +51,7 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setSwitchAccount(params.get("switch") === "1");
+    if (params.get("mode") === "signup") setMode("signup");
     if (auth.status === "authenticated" && params.get("switch") !== "1") router.replace(homeForRole(auth.role, false));
   }, [auth.status, auth.role, router]);
 
