@@ -90,7 +90,7 @@ export function AdminHomePage({ mobileTab = null }) {
   }, [requestedTab, mobileTab]);
 
   const loadData = useCallback(async (sessionToken, isActive = () => true, tab = "overview") => {
-    setLoadingTab(tab);
+    if (!loadedTabsRef.current.has(tab)) setLoadingTab(tab);
     if (!profileVerifiedRef.current) {
       if (!isActive()) return;
       if (auth.role !== "admin" || !auth.user) {

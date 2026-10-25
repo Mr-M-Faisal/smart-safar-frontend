@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function label(timestamp) {
   if (!timestamp) return "";
@@ -11,16 +11,26 @@ function label(timestamp) {
 export default function DesktopRefreshButton() {
   const [updatedAt, setUpdatedAt] = useState(0);
   const [, tick] = useState(0);
-  useEffect(() => {
-    try { setUpdatedAt(Number(sessionStorage.getItem("ss-desktop-refreshed-at") || 0)); } catch {}
-    const timer = window.setInterval(() => tick((value) => value + 1), 60000);
-    return () => window.clearInterval(timer);
-  }, []);
-  function refresh() {
+  const lastRefresh = useRef(0);
+  const refresh = useCallback(() => {
     const now = Date.now();
+    if (now - lastRefresh.current < 5000) return;
+    lastRefresh.current = now;
     try { sessionStorage.setItem("ss-desktop-refreshed-at", String(now)); } catch {}
     setUpdatedAt(now);
-    window.location.reload();
-  }
+    window.dispatchEvent(new Event("smart-safar:soft-refresh"));
+  }, []);
+  useEffect(() => {
+    let previous = 0;
+    try { previous = Number(sessionStorage.getItem("ss-desktop-refreshed-at") || 0); } catch {}
+    setUpdatedAt(previous);
+    lastRefresh.current = previous;
+    const start = window.setTimeout(refresh, 100);
+    const automaticRefresh = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60000);
+    const labelTimer = window.setInterval(() => tick((value) => value + 1), 60000);
+    const onVisibility = () => { if (document.visibilityState === "visible" && Date.now() - lastRefresh.current >= 60000) refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.clearTimeout(start); window.clearInterval(automaticRefresh); window.clearInterval(labelTimer); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [refresh]);
   return <div className="hidden items-center gap-2 lg:flex"><span aria-live="polite" className="text-[10px] text-[#8992a8]">{label(updatedAt)}</span><button type="button" onClick={refresh} className="min-h-10 rounded-xl border border-[#dfe4f3] bg-white px-3 text-xs font-semibold text-[#536bb7] hover:bg-[#f6f7fb]">↻ Refresh</button></div>;
 }

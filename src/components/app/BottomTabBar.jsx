@@ -13,7 +13,7 @@ export default function BottomTabBar({ items, label = "Mobile navigation", class
     <span aria-hidden="true" className="ss-tab-indicator" />
     {items.map((item, index) => {
       const active = index === activeIndex;
-      return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`ss-tab-link${active ? " is-active" : ""}`} onClick={() => { if (typeof navigator !== "undefined" && navigator.vibrate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) navigator.vibrate(8); }}>
+      return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`ss-tab-link${active ? " is-active" : ""}`} onClick={(event) => { item.onClick?.(event); if (!event.defaultPrevented && typeof navigator !== "undefined" && navigator.vibrate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) navigator.vibrate(8); }}>
         <span className="ss-tab-icon"><AppIcon name={item.icon || "Home"} size={20}/>{item.badge ? <span className="ss-tab-badge">{item.badge}</span> : null}</span><span className="ss-tab-label">{item.label}</span>
       </Link>;
     })}

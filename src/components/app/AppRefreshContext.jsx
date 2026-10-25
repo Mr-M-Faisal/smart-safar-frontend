@@ -9,6 +9,11 @@ export function AppRefreshProvider({ children }) {
 }
 export function useAppRefresh(callback) {
   const context = useContext(AppRefreshContext);
-  useEffect(() => context?.register(callback), [callback, context]);
+  useEffect(() => {
+    const unregister = context?.register(callback);
+    const handleSoftRefresh = () => { Promise.resolve(callback()).catch((error) => console.warn("Smart Safar background refresh failed:", error)); };
+    window.addEventListener("smart-safar:soft-refresh", handleSoftRefresh);
+    return () => { unregister?.(); window.removeEventListener("smart-safar:soft-refresh", handleSoftRefresh); };
+  }, [callback, context]);
 }
 export function useAppRefreshHandler() { return useContext(AppRefreshContext)?.refresh; }

@@ -17,6 +17,7 @@ import { readBookingSelection, saveBookingSelection } from "@/lib/bookingSelecti
 import busListState from "@/lib/busListState.cjs";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { RequireRole } from "@/lib/auth/AuthProvider";
+import { useAppRefresh } from "@/components/app/AppRefreshContext";
 const { getBusListViewState } = busListState;
 
 function getLocation() {
@@ -185,6 +186,14 @@ function PassengerDashboardContent() {
     setBootstrapAlerts(Array.isArray(bootstrap.routeAlerts) ? bootstrap.routeAlerts : []);
     setSessionState("ready");
   }, [auth.role, auth.user]);
+  const refreshPassengerData = useCallback(() => {
+    if (!token || sessionState !== "ready") return Promise.resolve();
+    return reload(token).catch((error) => {
+      if (error.status === 401) { clearSessionToken("commuter"); setToken(null); setSessionState("expired"); }
+      else setNotice({ type: "error", text: error.message || "Could not refresh passenger data." });
+    });
+  }, [reload, sessionState, token]);
+  useAppRefresh(refreshPassengerData);
 
   useEffect(() => {
     let active = true;

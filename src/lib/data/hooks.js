@@ -52,12 +52,14 @@ function useResource(path, { token, enabled = true, fallbackData } = {}) {
     };
     window.addEventListener("focus", revalidate);
     window.addEventListener("online", revalidate);
+    window.addEventListener("smart-safar:soft-refresh", revalidate);
     return () => {
       current = false;
       window.removeEventListener("smart-safar:cache-updated", onCacheUpdate);
       window.removeEventListener("smart-safar:stale-data", onStaleData);
       window.removeEventListener("focus", revalidate);
       window.removeEventListener("online", revalidate);
+      window.removeEventListener("smart-safar:soft-refresh", revalidate);
     };
   }, [enabled, path, refresh]);
 

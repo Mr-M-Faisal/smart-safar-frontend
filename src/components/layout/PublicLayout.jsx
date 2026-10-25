@@ -14,6 +14,7 @@ import BottomTabBar from "@/components/app/BottomTabBar";
 import { homeForRole } from "@/lib/auth/roleHome";
 import VersionStatus from "@/components/app/VersionStatus";
 import DesktopRefreshButton from "@/components/app/DesktopRefreshButton";
+import { readBookingSelection } from "@/lib/bookingSelection";
 
 const links = [
   ["Home", "/"],
@@ -44,6 +45,20 @@ export default function PublicLayout({ children }) {
   const signedIn = auth.status === "authenticated";
   const profile = signedIn ? auth.user : null;
   const roleLabel = auth.role === "admin" ? "Administrator" : auth.role === "driver" ? "Driver" : "Passenger";
+  const bookHref = signedIn && auth.role === "commuter" ? "/passenger" : "/booking-preview";
+  function openSelectedBooking(event) {
+    const saved = readBookingSelection();
+    const params = new URLSearchParams(window.location.search);
+    const route = params.get("route") || saved.routeId;
+    const bus = params.get("bus") || saved.busId;
+    const seat = params.get("seat") || saved.seatNumber;
+    if (!route) return;
+    event.preventDefault();
+    const query = new URLSearchParams({ route });
+    if (bus) query.set("bus", bus);
+    if (seat) query.set("seat", seat);
+    router.push(`${bookHref}?${query.toString()}${bookHref === "/passenger" ? "#booking" : ""}`);
+  }
   const logoHref = signedIn ? homeForRole(auth.role, false) : "/";
   return (
     <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-night text-white">
@@ -66,7 +81,7 @@ export default function PublicLayout({ children }) {
           <div className="flex shrink-0 items-center gap-2">
             <DesktopRefreshButton />
             <InstallButton />
-            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: auth.role === "admin" ? "/admin?tab=settings" : "/account/settings" }, ...(auth.role === "commuter" ? [{ label: "My trips", href: "/passenger?tab=history" }, { label: "Trip security", href: "/passenger?tab=security" }] : [])]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
+            {auth.status === "loading" ? <span aria-hidden="true" className="inline-block h-11 w-[4.75rem] rounded-full sm:w-[6.5rem]" /> : signedIn ? <ProfileMenu name={profile?.name} email={profile?.email} role={roleLabel} variant="light" compact homeHref={homeForRole(auth.role, false)} homeLabel="Open dashboard" dashboardLinks={[{ label: "Profile", href: "/account/profile" }, { label: "Settings", href: auth.role === "admin" ? "/admin?tab=settings" : "/account/settings" }, ...(auth.role === "commuter" ? [{ label: "My trips", href: "/passenger?tab=history" }, { label: "Trip security", href: "/passenger?tab=security" }] : [])]} onSignOut={() => { void revokeAndClearSession(auth.role); router.push("/login"); }} /> : <Link href={signInHref} className="rounded-full border border-[#536bb7] bg-[#536bb7] px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_7px_18px_rgba(83,107,183,.2)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#43599f] hover:shadow-[0_10px_24px_rgba(83,107,183,.3)] sm:px-5 sm:text-sm">Sign in <span aria-hidden="true" className="ml-1 text-[#c7f8ec]">↗</span></Link>}
           </div>
         </div>
       </header>
@@ -114,7 +129,7 @@ export default function PublicLayout({ children }) {
         { label: "Home", href: "/", icon: "Home", exact: true },
         { label: "Map", href: "/live-map", icon: "Map" },
         { label: "Routes", href: "/routes", icon: "Routes" },
-        { label: "Book", href: "/passenger", icon: "Ticket", matchPaths: ["/booking-preview"] },
+        { label: "Book", href: bookHref, icon: "Ticket", matchPaths: ["/passenger", "/booking-preview"], onClick: openSelectedBooking },
       ]} className="ss-app-tabs" />
     </div>
   );

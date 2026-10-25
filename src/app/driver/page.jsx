@@ -343,7 +343,7 @@ export function DriverHomePage({ mobile = false }) {
       <div className="mx-auto w-full max-w-[1180px]">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div><p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#536bb7]">Driver workspace · Faisalabad</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#25304f] sm:text-4xl">Good day{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#68738e]">Check your assigned vehicle and control your current transit shift.</p></div>
-          {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" homeHref="/driver" homeLabel="Open dashboard" onSignOut={signOut} />}
+          {pageState === "ready" && <ProfileMenu name={profile?.name} email={profile?.email} role="Driver" compact homeHref="/driver" homeLabel="Open dashboard" onSignOut={signOut} />}
         </div>
 
         {authState === "loading" && pageState !== "error" && <div className="mt-8 rounded-3xl border border-white bg-white p-6 text-sm text-[#68738e] shadow-sm" role="status">Loading your driver profile…</div>}
