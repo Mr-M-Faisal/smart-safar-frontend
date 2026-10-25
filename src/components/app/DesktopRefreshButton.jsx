@@ -32,5 +32,5 @@ export default function DesktopRefreshButton() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => { window.clearTimeout(start); window.clearInterval(automaticRefresh); window.clearInterval(labelTimer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [refresh]);
-  return <div className="hidden items-center gap-2 lg:flex"><span aria-live="polite" className="text-[10px] text-[#8992a8]">{label(updatedAt)}</span><button type="button" onClick={refresh} className="min-h-10 rounded-xl border border-[#dfe4f3] bg-white px-3 text-xs font-semibold text-[#536bb7] hover:bg-[#f6f7fb]">↻ Refresh</button></div>;
+  return <span aria-live="polite" className="hidden whitespace-nowrap text-[10px] text-[#8992a8] lg:inline">{label(updatedAt)}</span>;
 }
