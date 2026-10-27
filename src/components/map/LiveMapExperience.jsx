@@ -119,7 +119,11 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
 
   function onLayoutChange() { mapRef.current?.invalidateSize({ pan: false }); }
 
-  const pathKey = stops.map((stop) => `${stop.stopName}:${stop.latitude}:${stop.longitude}`).join("|");
+  const orderedStops = useMemo(() => (Array.isArray(stops) ? [...stops] : []).sort((left, right) => {
+    const orderDifference = (Number(left.stopOrder) || 0) - (Number(right.stopOrder) || 0);
+    return orderDifference || String(left._id || left.stopName || "").localeCompare(String(right._id || right.stopName || ""));
+  }), [stops]);
+  const pathKey = orderedStops.map((stop) => `${stop._id || stop.stopName}:${stop.stopOrder}:${stop.latitude}:${stop.longitude}`).join("|");
   const lastPathKey = useRef("");
 
   useEffect(() => {
@@ -129,27 +133,41 @@ function BusMap({ routeId, stops, buses, selectedBusId, onSelectBus, mapControll
     if (!mapReady || !L || !map || !routeLayer) return;
     routeLayer.clearLayers();
 
-    const routePoints = stops.map((stop) => normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName })).filter(Boolean);
+    const locatedStops = orderedStops.map((stop, index) => ({
+      stop,
+      index,
+      point: normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName }),
+    })).filter((entry) => entry.point);
+    const routePoints = locatedStops.map(({ point }) => point);
 
     if (routePoints.length > 1) {
-      L.polyline(routePoints, { color: "#20bba5", weight: 5, opacity: 0.88, dashArray: "8 9", lineCap: "round" }).addTo(routeLayer);
+      L.polyline(routePoints, { color: "#ffffff", weight: 11, opacity: 0.94, lineCap: "round", lineJoin: "round" }).addTo(routeLayer);
+      L.polyline(routePoints, { color: "#168f80", weight: 6, opacity: 1, lineCap: "round", lineJoin: "round" }).addTo(routeLayer);
     }
-    stops.forEach((stop, index) => {
-      const point = normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName });
-      if (!point) return;
-      L.circleMarker(point, {
-        radius: index === 0 || index === stops.length - 1 ? 8 : 6,
-        color: "#ffffff", weight: 3, fillColor: index === 0 || index === stops.length - 1 ? "#20bba5" : "#7185c6", fillOpacity: 1,
-      }).bindTooltip(tooltipText(stop.stopName), { direction: "top", offset: [0, -6] }).addTo(routeLayer);
+    locatedStops.forEach(({ stop, index, point }) => {
+      const isStart = index === 0;
+      const isEnd = index === orderedStops.length - 1;
+      const color = isStart ? "#168f80" : isEnd ? "#e49353" : "#536bb7";
+      L.marker(point, {
+        icon: L.divIcon({
+          className: "ss-route-stop-marker",
+          html: `<span style="display:grid;place-items:center;width:34px;height:34px;border:3px solid #fff;border-radius:50%;background:${color};color:#fff;font:700 12px/1 sans-serif;box-shadow:0 2px 9px #25304f66">${index + 1}</span>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+        }),
+        keyboard: true,
+        title: stop.stopName || `Stop ${index + 1}`,
+      }).bindTooltip(tooltipText(stop.stopName || `Stop ${index + 1}`), { direction: "top", offset: [0, -8] }).addTo(routeLayer);
     });
 
     const currentPathKey = `${routeId}|${pathKey}`;
     if (currentPathKey !== lastPathKey.current) {
       lastPathKey.current = currentPathKey;
-      if (routePoints.length > 1) map.fitBounds(L.latLngBounds(routePoints), { padding: [34, 34], maxZoom: 14 });
+      if (routePoints.length > 1) map.fitBounds(L.latLngBounds(routePoints), { padding: [44, 44], maxZoom: 14 });
+      else if (routePoints.length === 1) map.setView(routePoints[0], 15);
       else map.setView(FAISALABAD_CENTER, 13);
     }
-  }, [mapReady, routeId, pathKey, stops]);
+  }, [mapReady, routeId, pathKey, orderedStops]);
 
   useEffect(() => {
     const L = leafletRef.current;
@@ -241,6 +259,8 @@ export default function LiveMapExperience() {
     if (dataSource === "demo") return demoData?.demoStopsForRoute(selectedRoute) || [];
     return Array.isArray(selectedRoute.stops) ? selectedRoute.stops : [];
   }, [selectedRoute, dataSource, demoData]);
+  const locatedStopCount = useMemo(() => stops.filter((stop) => normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName })).length, [stops]);
+  const stopsWithoutLocation = stops.length - locatedStopCount;
   const dataViewState = getDataViewState({ isLoading: dataSource === "loading", error: dataSource === "error" ? routesResource.error : null, data: routes, hasCache: dataSource === "saved" });
 
   useEffect(() => {
@@ -367,10 +387,13 @@ export default function LiveMapExperience() {
           <section className="min-w-0 rounded-[1.75rem] border border-white bg-white p-2.5 shadow-[0_16px_42px_rgba(53,67,112,.1)] sm:p-3" aria-label="Bus map">
             <div className="relative h-[42svh] min-h-[280px] max-h-[430px] w-full min-w-0 overflow-hidden rounded-[1.4rem] bg-[#e6e9f4] sm:h-[48svh] sm:min-h-[340px] sm:max-h-[520px] lg:h-[60vh] lg:min-h-[420px] lg:max-h-[650px]">
               <BusMap routeId={routeId} stops={stops} buses={visibleBuses} selectedBusId={selectedBus?._id} onSelectBus={(id) => { setSelectedBusId(id); saveBookingSelection({ routeId, busId: id }); }} mapController={mapController} dataSource={dataSource} locationClock={locationClock}/>
+              {selectedRoute && stops.length === 0 && dataSource !== "loading" && <p role="status" className="pointer-events-none absolute left-1/2 top-3 z-[450] -translate-x-1/2 rounded-full border border-white/80 bg-white/95 px-3 py-1.5 text-xs font-medium text-[#596681] shadow-sm">No stops have been added to this route yet.</p>}
+              {stopsWithoutLocation > 0 && <p role="status" className="pointer-events-none absolute left-1/2 top-3 z-[450] -translate-x-1/2 rounded-full border border-amber-200 bg-amber-50/95 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm">{stopsWithoutLocation} {stopsWithoutLocation === 1 ? "stop has" : "stops have"} no map location</p>}
+              {stops.length > 0 && locatedStopCount === 1 && stopsWithoutLocation === 0 && <p role="status" className="pointer-events-none absolute left-1/2 top-3 z-[450] -translate-x-1/2 rounded-full border border-white/80 bg-white/95 px-3 py-1.5 text-xs font-medium text-[#596681] shadow-sm">Showing the stop. Add another stop to draw the route line.</p>}
               {dataSource === "loading" && <div className="absolute inset-0 z-[600]"><MapSkeleton className="!min-h-0 h-full rounded-[1.4rem]" /></div>}
               {(dataSource === "error" || dataSource === "empty") && <div role={dataSource === "error" ? "alert" : "status"} className="absolute inset-x-4 top-16 z-[600] mx-auto max-w-sm rounded-2xl border border-white bg-white/95 p-4 text-center text-sm text-[#596681] shadow-lg">{dataSource === "error" ? <>We couldn’t load real route data. <button onClick={() => void routesResource.refresh()} className="font-semibold text-[#536bb7] underline">Retry</button>{demoModeEnabled && <span className="mt-1 block text-xs">Demo data is available when demo mode is enabled.</span>}</> : "The transit service has no routes to show yet."}</div>}
               <button onClick={locateMe} className="absolute left-3 top-3 z-[500] inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/80 bg-white/95 px-3.5 text-xs font-semibold text-[#465a9c] shadow-md backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lg" aria-label="Show my current location"><span aria-hidden="true">◎</span><span className="hidden sm:inline">My location</span></button>
-              <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap gap-2 rounded-xl border border-white/80 bg-white/95 px-3 py-2 text-[10px] font-semibold text-[#596681] shadow-md backdrop-blur"><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#20bba5]"/>Bus</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#7185c6]"/>Stop</span></div>
+              <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap gap-3 rounded-xl border border-white/80 bg-white/95 px-3 py-2 text-[10px] font-semibold text-[#596681] shadow-md backdrop-blur"><span className="inline-flex items-center gap-1.5"><i className="h-0.5 w-4 rounded bg-[#168f80]"/>Selected route</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#20bba5]"/>Bus</span><span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#536bb7]"/>Stop</span></div>
             </div>
             {mapMessage && <p role="status" className="px-3 pt-3 text-xs text-[#68738e]">{mapMessage}</p>}
           </section>
