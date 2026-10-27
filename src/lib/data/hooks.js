@@ -9,9 +9,11 @@ function useResource(path, { token, enabled = true, fallbackData } = {}) {
     return { path, data: saved?.data ?? fallbackData ?? null, cachedAt: saved?.timestamp ?? null, hasCache: Boolean(saved), isLoading: Boolean(enabled && path), error: null };
   });
   const lastRefreshAt = useRef(0);
+  const requestSequence = useRef(0);
 
   const refresh = useCallback(async () => {
     if (!path || !enabled) return null;
+    const requestId = ++requestSequence.current;
     setState((current) => {
       const saved = path && !token ? readSavedCache(path) : null;
       const samePath = current.path === path;
@@ -21,14 +23,17 @@ function useResource(path, { token, enabled = true, fallbackData } = {}) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const data = await apiRequest(path, token ? { token } : {});
+        if (requestId !== requestSequence.current) return data;
         setState({ path, data, cachedAt: token ? null : readSavedCache(path)?.timestamp ?? null, hasCache: false, isLoading: false, error: null });
         return data;
       } catch (error) {
+        if (requestId !== requestSequence.current) return null;
         lastError = error;
         if (error.status >= 400 && error.status < 500) break;
         if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 500 * (2 ** attempt)));
       }
     }
+    if (requestId !== requestSequence.current) return null;
     setState((current) => ({ path, data: current.path === path ? current.data : null, cachedAt: current.path === path ? current.cachedAt : null, hasCache: current.path === path ? current.hasCache : false, isLoading: false, error: lastError }));
     return null;
   }, [path, token, enabled, fallbackData]);
@@ -42,8 +47,13 @@ function useResource(path, { token, enabled = true, fallbackData } = {}) {
     const onStaleData = (event) => {
       if (event.detail?.path === path && current) setState((previous) => ({ ...previous, path, hasCache: true, cachedAt: event.detail.timestamp }));
     };
+    const onCacheInvalidated = (event) => {
+      const matches = event.detail?.paths?.includes(path) || event.detail?.prefixes?.some((prefix) => path.startsWith(prefix));
+      if (matches && current) void refresh();
+    };
     window.addEventListener("smart-safar:cache-updated", onCacheUpdate);
     window.addEventListener("smart-safar:stale-data", onStaleData);
+    window.addEventListener("smart-safar:cache-invalidated", onCacheInvalidated);
     void refresh();
     const revalidate = () => {
       if (Date.now() - lastRefreshAt.current < 5000) return;
@@ -57,6 +67,7 @@ function useResource(path, { token, enabled = true, fallbackData } = {}) {
       current = false;
       window.removeEventListener("smart-safar:cache-updated", onCacheUpdate);
       window.removeEventListener("smart-safar:stale-data", onStaleData);
+      window.removeEventListener("smart-safar:cache-invalidated", onCacheInvalidated);
       window.removeEventListener("focus", revalidate);
       window.removeEventListener("online", revalidate);
       window.removeEventListener("smart-safar:soft-refresh", revalidate);

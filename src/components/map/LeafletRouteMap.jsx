@@ -27,6 +27,9 @@ export default function LeafletRouteMap({
   mapController,
   className = "",
   ariaLabel = "Map showing transit routes and stops",
+  onPickCoordinate,
+  onStopDrag,
+  draggableStops = false,
 }) {
   const containerRef = useRef(null);
   const leafletRef = useRef(null);
@@ -35,9 +38,13 @@ export default function LeafletRouteMap({
   const busLayerRef = useRef(null);
   const routeSelectRef = useRef(onSelectRoute);
   const busSelectRef = useRef(onSelectBus);
+  const pickCoordinateRef = useRef(onPickCoordinate);
+  const stopDragRef = useRef(onStopDrag);
   const [mapReady, setMapReady] = useState(false);
   routeSelectRef.current = onSelectRoute;
   busSelectRef.current = onSelectBus;
+  pickCoordinateRef.current = onPickCoordinate;
+  stopDragRef.current = onStopDrag;
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +54,8 @@ export default function LeafletRouteMap({
       if (cancelled || !containerRef.current) return;
       const L = module.default || module;
       leafletRef.current = L;
-      const map = L.map(containerRef.current, { zoomControl: false, preferCanvas: true, scrollWheelZoom: false, minZoom: 9, maxBounds: L.latLngBounds(SERVICE_AREA_BOUNDS).pad(0.12), maxBoundsViscosity: 1 })
+      const touchDevice = window.matchMedia?.("(pointer: coarse)").matches || false;
+      const map = L.map(containerRef.current, { zoomControl: false, preferCanvas: true, scrollWheelZoom: false, dragging: !touchDevice, touchZoom: !touchDevice, minZoom: 9, maxBounds: L.latLngBounds(SERVICE_AREA_BOUNDS).pad(0.12), maxBoundsViscosity: 1 })
         .setView(FAISALABAD_CENTER, 12);
       map.on("moveend", () => {
         const center = map.getCenter();
@@ -74,6 +82,9 @@ export default function LeafletRouteMap({
         window.addEventListener("resize", resizeHandler);
       }
       window.setTimeout(() => map.invalidateSize({ pan: false }), 80);
+      map.on("click", (event) => {
+        if (typeof pickCoordinateRef.current === "function") pickCoordinateRef.current({ latitude: event.latlng.lat, longitude: event.latlng.lng });
+      });
     }).catch(() => {});
 
     return () => {
@@ -93,7 +104,7 @@ export default function LeafletRouteMap({
 
   function onLayoutChange() { mapRef.current?.invalidateSize({ pan: false }); }
 
-  const pathSignature = useMemo(() => routeSegments.map((segment) => `${segment.routeId || segment._id}:${(segment.stops || []).map((stop) => `${stop.stopName}:${stop.latitude}:${stop.longitude}`).join(";")}`).join("|"), [routeSegments]);
+  const pathSignature = useMemo(() => routeSegments.map((segment) => `${segment.routeId || segment._id}:${(segment.stops || []).map((stop, index) => `${stop._id || stop.stopName || index}:${stop.stopOrder ?? index + 1}:${stop.latitude}:${stop.longitude}`).join(";")}`).join("|"), [routeSegments]);
   const lastPathSignature = useRef("");
 
   useEffect(() => {
@@ -106,7 +117,9 @@ export default function LeafletRouteMap({
 
     routeSegments.forEach((segment, segmentIndex) => {
       const routeId = segment.routeId || segment._id;
-      const points = (segment.stops || []).map((stop) => normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName })).filter(Boolean);
+      const stops = (segment.stops || []).slice().sort((left, right) => (Number(left.stopOrder) || 0) - (Number(right.stopOrder) || 0));
+      const locatedStops = stops.map((stop, index) => ({ stop, index, point: normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName }) })).filter((entry) => entry.point);
+      const points = locatedStops.map((entry) => entry.point);
       allPoints.push(...points);
       const isSelected = !selectedRouteId || String(routeId) === String(selectedRouteId);
       const color = routeColors[segmentIndex % routeColors.length];
@@ -126,16 +139,19 @@ export default function LeafletRouteMap({
         }
       }
 
-      (segment.stops || []).forEach((stop, stopIndex) => {
-        const point = normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop", id: stop._id || stop.stopName });
-        if (!point) return;
-        L.circleMarker(point, {
-          radius: isSelected ? (stopIndex === 0 || stopIndex === segment.stops.length - 1 ? 7 : 5) : 4,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: color,
-          fillOpacity: isSelected ? 0.98 : 0.74,
-        }).bindTooltip(safeTooltip(stop.stopName), { direction: "top", offset: [0, -5] }).addTo(segmentLayer);
+      locatedStops.forEach(({ stop, index }, locatedIndex) => {
+        const point = locatedStops[locatedIndex].point;
+        const markerColor = index === 0 ? "#18846f" : index === stops.length - 1 ? "#e49353" : color;
+        const marker = L.marker(point, {
+          icon: L.divIcon({ className: "ss-route-stop-marker", html: `<span style="display:grid;place-items:center;width:36px;height:36px;border:3px solid #fff;border-radius:50%;background:${markerColor};color:#fff;font:700 13px/1 sans-serif;box-shadow:0 2px 8px #25304f55">${index + 1}</span>`, iconSize: [36, 36], iconAnchor: [18, 18] }),
+          draggable: Boolean(draggableStops && (stop._id || stop.draftId) && stopDragRef.current),
+          keyboard: true,
+          title: stop.stopName || `Stop ${index + 1}`,
+        }).bindTooltip(safeTooltip(stop.stopName || `Stop ${index + 1}`), { direction: "top", offset: [0, -8] }).addTo(segmentLayer);
+        if (marker.options.draggable) marker.on("dragend", (event) => {
+          const latlng = event.target.getLatLng();
+          stopDragRef.current?.(stop._id || stop.draftId, { latitude: latlng.lat, longitude: latlng.lng });
+        });
       });
     });
 
@@ -143,6 +159,7 @@ export default function LeafletRouteMap({
     if (selectionSignature !== lastPathSignature.current) {
       lastPathSignature.current = selectionSignature;
       if (allPoints.length > 1) map.fitBounds(L.latLngBounds(allPoints), { padding: [24, 24], maxZoom: routeSegments.length > 1 ? 13 : 15 });
+      else if (allPoints.length === 1) map.setView(allPoints[0], 15);
       else map.setView(FAISALABAD_CENTER, 12);
     }
   }, [mapReady, pathSignature, routeSegments, selectedRouteId]);
@@ -174,5 +191,11 @@ export default function LeafletRouteMap({
     });
   }, [mapReady, buses, selectedBusId]);
 
-  return <div ref={containerRef} className={`leaflet-route-map h-full w-full rounded-[inherit] bg-[#e6e9f4] ${className}`} role="application" aria-label={ariaLabel} />;
+  const totalStops = routeSegments.reduce((count, segment) => count + (segment.stops?.length || 0), 0);
+  const missingStops = routeSegments.reduce((count, segment) => count + (segment.stops || []).filter((stop) => !normalizeServiceCoordinate(stop.latitude, stop.longitude, { label: "stop" })).length, 0);
+  return <div className={`relative h-full w-full overflow-hidden rounded-[inherit] bg-[#e6e9f4] ${className}`}>
+    <div ref={containerRef} className="leaflet-route-map h-full w-full" role="application" aria-label={ariaLabel} />
+    {totalStops === 0 && <p className="pointer-events-none absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full border border-white/80 bg-white/95 px-3 py-1.5 text-xs font-medium text-[#596681] shadow-sm">{onPickCoordinate ? "No stops added yet. Click the map to place one." : "No route stops to display."}</p>}
+    {missingStops > 0 && <p role="status" className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-full border border-amber-200 bg-amber-50/95 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm">{missingStops} {missingStops === 1 ? "stop has" : "stops have"} no location</p>}
+  </div>;
 }

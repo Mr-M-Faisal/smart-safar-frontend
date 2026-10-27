@@ -24,6 +24,11 @@ const CACHE_KEY_PREFIX = "ss-cache-v1:";
 const CACHE_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 const inFlightRequests = new Map();
 const lastRevalidatedAt = new Map();
+let routeCacheEpoch = 0;
+
+function isRouteCachePath(path) {
+  return path === "/routes" || path === "/routes/overview" || path.startsWith("/stops/route/");
+}
 
 function cacheTtl(path) {
   return path.startsWith("/buses") ? 30 * 1000 : 24 * 60 * 60 * 1000;
@@ -87,8 +92,36 @@ export function writeSavedCache(path, data) {
   }
 }
 
+function invalidateRouteDataCaches() {
+  routeCacheEpoch += 1;
+  for (const key of inFlightRequests.keys()) {
+    const separator = key.indexOf("\u0000");
+    if (separator >= 0 && isRouteCachePath(key.slice(0, separator))) inFlightRequests.delete(key);
+  }
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      const prefix = key?.startsWith(CACHE_KEY_PREFIX) ? CACHE_KEY_PREFIX : "smart-safar:cache:";
+      if (!key?.startsWith(prefix)) continue;
+      const path = key.slice(prefix.length);
+      if (path === "/routes" || path === "/routes/overview" || path.startsWith("/stops/route/")) {
+        window.localStorage.removeItem(key);
+        window.localStorage.removeItem(`${CACHE_KEY_PREFIX}${path}`);
+        window.localStorage.removeItem(`smart-safar:cache:${path}`);
+      }
+    }
+  } catch {
+    // Cache invalidation must never turn a successful save into a failed action.
+  }
+  window.dispatchEvent(new CustomEvent("smart-safar:cache-invalidated", {
+    detail: { paths: ["/routes", "/routes/overview"], prefixes: ["/stops/route/"] },
+  }));
+}
+
 async function rawRequest(path, options, token, { bypassCache = false } = {}) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const requestRouteCacheEpoch = routeCacheEpoch;
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -107,8 +140,9 @@ async function rawRequest(path, options, token, { bypassCache = false } = {}) {
       }
       if (!inFlightRequests.has(key) && Date.now() - (lastRevalidatedAt.get(key) || 0) >= 5000) {
         lastRevalidatedAt.set(key, Date.now());
+        const revalidationEpoch = routeCacheEpoch;
         void rawRequest(path, options, token, { bypassCache: true }).then(({ response: freshResponse, payload: fresh }) => {
-          if (freshResponse.ok && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("smart-safar:cache-updated", { detail: { path: normalizedPath, data: fresh, timestamp: Date.now() } }));
+          if (freshResponse.ok && routeCacheEpoch === revalidationEpoch && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("smart-safar:cache-updated", { detail: { path: normalizedPath, data: fresh, timestamp: Date.now() } }));
         }).catch(() => {});
       }
       return { response: { ok: true, status: 200, headers: new Headers({ "content-type": "application/json" }) }, payload: cached.data };
@@ -146,7 +180,7 @@ async function rawRequest(path, options, token, { bypassCache = false } = {}) {
   let payload = null;
   if (contentType.includes("application/json")) { try { payload = await response.json(); } catch { payload = null; } }
 
-  if (response.ok && payload && canCache) {
+  if (response.ok && payload && canCache && (!isRouteCachePath(normalizedPath) || routeCacheEpoch === requestRouteCacheEpoch)) {
     writeSavedCache(normalizedPath, payload);
   } else if (!response.ok && canCache && response.status >= 500) {
     const cached = readSavedCache(normalizedPath);
@@ -167,7 +201,7 @@ async function rawRequest(path, options, token, { bypassCache = false } = {}) {
       if (canCache && result.response.ok) lastRevalidatedAt.set(key, Date.now());
       return result;
     }
-    finally { inFlightRequests.delete(key); }
+    finally { if (inFlightRequests.get(key) === request) inFlightRequests.delete(key); }
   }
   return request;
 }
@@ -217,6 +251,10 @@ export async function apiRequest(path, { token, ...options } = {}) {
   if (retriedAfterRefresh && response.status === 401) throw new ApiError("The refreshed session was not accepted. Please retry; your session was kept.", 503, { code: "REFRESHED_ACCESS_REJECTED" });
   if (!response.ok) {
     throw new ApiError(payload?.message || "The request could not be completed.", response.status, payload);
+  }
+  if (options.method && options.method.toUpperCase() !== "GET") {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    if (/^\/(routes|stops)(\/|$)/.test(normalizedPath)) invalidateRouteDataCaches();
   }
   return payload;
 }
